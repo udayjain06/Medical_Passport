@@ -141,10 +141,16 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.getByText("synthetic-lab-report.png")).toBeVisible();
   await page.getByRole("button", { name: "Details" }).click();
   await page.getByRole("button", { name: "Run OCR and extraction" }).click();
-  await expect(page.getByText("needs_review")).toBeVisible({ timeout: 60000 });
-  await expect(page.locator(".review-box textarea")).toHaveValue(/Synthetic Lab Report/);
-  await page.getByRole("button", { name: "Confirm reviewed facts" }).click();
-  await expect(page.getByText("confirmed")).toBeVisible();
+  await expect(page.getByText("needs review")).toBeVisible({ timeout: 60000 });
+  await expect(page.locator(".review-box textarea").first()).toHaveValue(/Synthetic Lab Report/);
+  // Nothing can be confirmed until the patient accepts at least one suggestion.
+  await expect(page.getByRole("button", { name: /Add 0 accepted/ })).toBeDisabled();
+  const timelineCandidate = page.locator(".candidate").filter({
+    hasText: /Diagnosis|Condition|Allergy|Medication|Procedure|Lab result|Admission date|Discharge date|Follow-up date|Unstructured text/,
+  }).first();
+  await timelineCandidate.getByRole("button", { name: "Accept", exact: true }).click();
+  await page.getByRole("button", { name: /Add 1 accepted/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "added to your" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await page.goto("/timeline");
   await expect(page.getByText("Source Text", { exact: false })).toBeVisible();
@@ -190,7 +196,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   const publicPage = await publicContext.newPage();
   monitor(publicPage);
   await publicPage.goto(publicUrl);
-  await expect(publicPage.getByRole("heading", { name: "Emergency medical information" })).toBeVisible();
+  await expect(publicPage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
   await expect(publicPage.getByText("Test Patient", { exact: false }).first()).toBeVisible();
   await page.getByRole("button", { name: "Revoke" }).click();
   await publicPage.reload();
