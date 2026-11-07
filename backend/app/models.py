@@ -151,9 +151,29 @@ class EmergencyShare(Base):
     shared_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
+
+
+class EmergencyAccessLog(Base):
+    """One row per view of a public emergency link. Shown to the patient in the app."""
+
+    __tablename__ = "emergency_access_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    share_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("emergency_shares.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    ip_prefix: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
 
 class TimelineEvent(Base):

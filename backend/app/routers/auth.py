@@ -1,12 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import document_storage
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import AuditEvent, PatientProfile, User
+from app.models import (
+    AuditEvent,
+    EmergencyShare,
+    MedicalDocument,
+    PatientProfile,
+    TimelineEvent,
+    User,
+)
+from app.network import client_ip
 from app.rate_limit import auth_rate_limiter
 from app.schemas import AuthResponse, LoginRequest, RegisterRequest, UserRead
 from app.security import COOKIE_NAME, create_session_token, hash_password, verify_password
@@ -16,11 +26,11 @@ _DUMMY_HASH = hash_password("not-a-real-user-password")
 
 
 def _rate_limit(request: Request, action: str) -> None:
-    host = request.client.host if request.client else "unknown"
     auth_rate_limiter.check(
-        f"{action}:{host}",
+        f"{action}:{client_ip(request)}",
         settings.auth_rate_limit_count,
         settings.auth_rate_limit_window_seconds,
+        "Too many authentication attempts. Try again later.",
     )
 
 
@@ -108,3 +118,106 @@ def logout(
 @router.get("/me", response_model=UserRead)
 def me(user: User = Depends(get_current_user)) -> User:
     return user
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
+@router.get("/export")
+def export_my_data(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Machine-readable copy of everything the account owns (right of access / portability)."""
+    profiles = db.scalars(select(PatientProfile).where(PatientProfile.user_id == user.id)).all()
+    ids = [p.id for p in profiles]
+    events = db.scalars(select(TimelineEvent).where(TimelineEvent.profile_id.in_(ids))).all()
+    documents = db.scalars(select(MedicalDocument).where(MedicalDocument.profile_id.in_(ids))).all()
+    shares = db.scalars(select(EmergencyShare).where(EmergencyShare.profile_id.in_(ids))).all()
+    db.add(
+        AuditEvent(
+            user_id=user.id, action="account.exported", target_type="user", target_id=user.id
+        )
+    )
+    db.commit()
+    return {
+        "account": {"email": user.email, "created_at": user.created_at.isoformat()},
+        "profiles": [
+            {
+                "id": str(p.id),
+                "full_name": p.full_name,
+                "blood_group": p.blood_group,
+                "known_allergies": p.known_allergies,
+                "major_conditions": p.major_conditions,
+                "current_medications": p.current_medications,
+                "emergency_contacts": [
+                    {"full_name": c.full_name, "phone_number": c.phone_number}
+                    for c in p.emergency_contacts
+                ],
+            }
+            for p in profiles
+        ],
+        "timeline_events": [
+            {
+                "title": e.title,
+                "category": e.category,
+                "event_date": e.event_date.isoformat() if e.event_date else None,
+                "summary": e.summary,
+                "source_document_filename": e.source_document_filename,
+                "verification_status": e.verification_status,
+            }
+            for e in events
+        ],
+        "documents": [
+            {
+                "id": str(d.id),
+                "filename": d.original_filename,
+                "category": d.category,
+                "uploaded_at": d.created_at.isoformat(),
+                "sha256": d.sha256_checksum,
+            }
+            for d in documents
+        ],
+        "emergency_links": [
+            {
+                "fields": s.shared_fields,
+                "expires_at": s.expires_at.isoformat(),
+                "revoked": s.revoked_at is not None,
+            }
+            for s in shares
+        ],
+    }
+
+
+@router.post("/delete-account")
+def delete_account(
+    payload: DeleteAccountRequest,
+    request: Request,
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Permanently erase the account, its profiles, files, timeline and emergency links."""
+    _rate_limit(request, "delete-account")
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=403, detail="Password is incorrect")
+    ids = list(db.scalars(select(PatientProfile.id).where(PatientProfile.user_id == user.id)).all())
+    documents = db.scalars(
+        select(MedicalDocument).where(
+            or_(
+                MedicalDocument.profile_id.in_(ids),
+                MedicalDocument.uploaded_by_user_id == user.id,
+            )
+        )
+    )
+    for document in documents:
+        document_storage.delete(document.profile_id, document.id)
+    db.delete(user)
+    db.add(AuditEvent(user_id=None, action="account.deleted", target_type="user", target_id=None))
+    db.commit()
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+    )
+    return {"status": "deleted"}

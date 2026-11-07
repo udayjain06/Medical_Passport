@@ -6,6 +6,7 @@ import urllib.request
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import settings
+from app.structured_extraction import extract_structured
 
 ALLOWED_FIELDS = {
     "source_text",
@@ -41,6 +42,13 @@ class CandidateFact(BaseModel):
     confidence: float = Field(ge=0, le=1)
     review_status: str = "pending"
 
+    @field_validator("review_status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        if value not in {"pending", "accepted", "rejected"}:
+            raise ValueError("Unsupported review status")
+        return value
+
     @field_validator("field")
     @classmethod
     def validate_field(cls, value: str) -> str:
@@ -53,21 +61,7 @@ def extract_candidates(pages: list[dict]) -> tuple[list[dict], str]:
     if not (
         settings.medical_ai_endpoint and settings.medical_ai_api_key and settings.medical_ai_model
     ):
-        # OCR output stays a human-reviewed source snippet; no clinical facts are inferred.
-        raw = [
-            {
-                "field": "source_text",
-                "value": "\n".join(line["text"] for page in pages for line in page["lines"]),
-                "source_page": page["page"],
-                "original_value": line["text"],
-                "normalized_value": None,
-                "confidence": line["confidence"],
-                "review_status": "pending",
-            }
-            for page in pages
-            for line in page["lines"]
-        ]
-        return [CandidateFact.model_validate(item).model_dump() for item in raw], "ocr-only"
+        return _rules(pages), "rules-v1"
     prompt = {
         "model": settings.medical_ai_model,
         "temperature": 0,
@@ -84,6 +78,17 @@ def extract_candidates(pages: list[dict]) -> tuple[list[dict], str]:
         ],
         "response_format": {"type": "json_object"},
     }
+    try:
+        return _ai_candidates(prompt), settings.medical_ai_model
+    except Exception:  # provider outage or malformed output: fall back to offline rules
+        return _rules(pages), "rules-v1 (ai-fallback)"
+
+
+def _rules(pages: list[dict]) -> list[dict]:
+    return [CandidateFact.model_validate(c).model_dump() for c in extract_structured(pages)]
+
+
+def _ai_candidates(prompt: dict) -> list[dict]:
     request = urllib.request.Request(
         settings.medical_ai_endpoint,
         data=json.dumps(prompt).encode(),
@@ -104,10 +109,18 @@ def extract_candidates(pages: list[dict]) -> tuple[list[dict], str]:
     for item in values:
         if not isinstance(item, dict) or not isinstance(item.get("value"), str):
             continue
-        confidence = float(item.get("confidence", 0))
-        if not 0 <= confidence <= 1:
-            continue
-        clean.append(
-            CandidateFact.model_validate({**item, "review_status": "pending"}).model_dump()
-        )
-    return clean, settings.medical_ai_model
+        try:
+            raw_confidence = item.get("confidence", 0)
+            if isinstance(raw_confidence, bool):
+                continue
+            confidence = float(raw_confidence)
+            if not 0 <= confidence <= 1:
+                continue
+            clean.append(
+                CandidateFact.model_validate({**item, "review_status": "pending"}).model_dump()
+            )
+        except (TypeError, ValueError, OverflowError):
+            continue  # drop one malformed or unsupported item instead of the whole run
+    if not clean:
+        raise ValueError("AI response contained no usable candidates")
+    return clean

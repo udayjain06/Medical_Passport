@@ -12,7 +12,13 @@ class InMemoryRateLimiter:
         self._requests: dict[str, deque[float]] = defaultdict(deque)
         self._lock = Lock()
 
-    def check(self, key: str, limit: int, window_seconds: int) -> None:
+    def check(
+        self,
+        key: str,
+        limit: int,
+        window_seconds: int,
+        message: str = "Too many requests. Try again later.",
+    ) -> None:
         now = monotonic()
         cutoff = now - window_seconds
         with self._lock:
@@ -23,7 +29,7 @@ class InMemoryRateLimiter:
                 retry_after = max(1, int(window_seconds - (now - requests[0])))
                 raise HTTPException(
                     status_code=429,
-                    detail="Too many authentication attempts. Try again later.",
+                    detail=message,
                     headers={"Retry-After": str(retry_after)},
                 )
             requests.append(now)

@@ -141,10 +141,16 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.getByText("synthetic-lab-report.png")).toBeVisible();
   await page.getByRole("button", { name: "Details" }).click();
   await page.getByRole("button", { name: "Run OCR and extraction" }).click();
-  await expect(page.getByText("needs_review")).toBeVisible({ timeout: 60000 });
-  await expect(page.locator(".review-box textarea")).toHaveValue(/Synthetic Lab Report/);
-  await page.getByRole("button", { name: "Confirm reviewed facts" }).click();
-  await expect(page.getByText("confirmed")).toBeVisible();
+  await expect(page.getByText("needs review")).toBeVisible({ timeout: 60000 });
+  await expect(page.locator(".review-box textarea").first()).toHaveValue(/Synthetic Lab Report/);
+  // Nothing can be confirmed until the patient accepts at least one suggestion.
+  await expect(page.getByRole("button", { name: /Add 0 accepted/ })).toBeDisabled();
+  const timelineCandidate = page.locator(".candidate").filter({
+    hasText: /Diagnosis|Condition|Allergy|Medication|Procedure|Lab result|Admission date|Discharge date|Follow-up date|Unstructured text/,
+  }).first();
+  await timelineCandidate.getByRole("button", { name: "Accept", exact: true }).click();
+  await page.getByRole("button", { name: /Add 1 accepted/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "added to your" })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
   await page.goto("/timeline");
   await expect(page.getByText("Source Text", { exact: false })).toBeVisible();
@@ -180,19 +186,49 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByLabel("Filter review status").selectOption("");
 
   await page.goto("/emergency");
+  await page.locator("#share-expiry").selectOption("8760");
+  await page.locator("#share-label").fill("Wallet card");
   await page.getByText("I understand anyone with this QR link can view the selected information.").click();
   await page.getByRole("button", { name: "Create emergency QR" }).click();
   const publicLink = await page.locator(".qr-result a").first().getAttribute("href");
   expect(publicLink).toBeTruthy();
   const publicUrl = new URL(new URL(publicLink!).pathname, page.url()).toString();
   await expect(page.getByAltText("Emergency access QR code")).toBeVisible();
+  await expect(page.getByText(/cannot be shown again/)).toBeVisible();
+  const qrDownload = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download QR" }).click();
+  expect((await qrDownload).suggestedFilename()).toBe("medical-passport-emergency-qr.png");
+  await page.evaluate(() => {
+    const testWindow = window as Window & { __walletPrintCalled?: boolean };
+    testWindow.print = () => { testWindow.__walletPrintCalled = true; };
+  });
+  await page.getByRole("button", { name: "Print wallet card" }).click();
+  expect(await page.evaluate(() => (window as Window & { __walletPrintCalled?: boolean }).__walletPrintCalled)).toBe(true);
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator(".wallet-card")).toBeVisible();
+  await page.emulateMedia({ media: "screen" });
+
   const publicContext = await page.context().browser()!.newContext();
   const publicPage = await publicContext.newPage();
   monitor(publicPage);
   await publicPage.goto(publicUrl);
-  await expect(publicPage.getByRole("heading", { name: "Emergency medical information" })).toBeVisible();
+  await expect(publicPage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
   await expect(publicPage.getByText("Test Patient", { exact: false }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Revoke" }).click();
+  await page.goto("/emergency");
+  await expect(page.getByText(/viewed 1×/)).toBeVisible();
+  await page.getByRole("button", { name: "Who viewed" }).click();
+  await expect(page.locator(".access-log")).toContainText("network");
+  await page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Renew" }).first().click();
+  const renewedLink = await page.locator(".qr-result a").first().getAttribute("href");
+  expect(renewedLink).toBeTruthy();
+  const renewedUrl = new URL(new URL(renewedLink!).pathname, page.url()).toString();
+  await publicPage.goto(publicUrl);
+  await expect(publicPage.getByRole("heading", { name: "Link unavailable" })).toBeVisible();
+  await publicPage.goto(renewedUrl);
+  await expect(publicPage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
+  const activeShare = page.locator(".share-row").first();
+  await activeShare.getByRole("button", { name: "Revoke" }).click();
   await publicPage.reload();
   await expect(publicPage.getByRole("heading", { name: "Link unavailable" })).toBeVisible();
   await publicContext.close();
@@ -262,7 +298,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.goto("/settings/abha");
   await expect(page.getByText("externally blocked")).toBeVisible();
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const route of ["/", "/login", "/signup", "/dashboard", "/documents", "/timeline", "/emergency", "/family", "/profile", "/settings/abha"]) {
+  for (const route of ["/", "/login", "/signup", "/dashboard", "/documents", "/timeline", "/emergency", "/family", "/profile", "/settings/abha", "/settings/account"]) {
     await page.goto(route);
     const layout = await page.evaluate(() => ({
       width: document.documentElement.scrollWidth,
@@ -273,6 +309,14 @@ test("registration, protected profile, persistence, logout, and login", async ({
     }));
     expect(layout.width <= 375, `${route} mobile overflow: ${JSON.stringify(layout)}`).toBe(true);
   }
+  await page.goto("/settings/account");
+  const exportDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download export" }).click();
+  expect((await exportDownload).suggestedFilename()).toBe("medical-passport-export.json");
+  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Type DELETE to confirm").fill("DELETE");
+  await page.getByRole("button", { name: "Delete account permanently" }).click();
+  await expect(page).toHaveURL(/\/$/);
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(apiFailures).toEqual([]);
