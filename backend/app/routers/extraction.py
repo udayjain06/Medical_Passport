@@ -185,7 +185,7 @@ def update_extraction(
         if not value or len(value) > 2000:
             raise HTTPException(422, "Candidate text must be 1 to 2000 characters")
         status = item.get("review_status", "pending")
-        if status not in REVIEW_STATUSES:
+        if not isinstance(status, str) or status not in REVIEW_STATUSES:
             raise HTTPException(422, "Review status must be pending, accepted or rejected")
         clean.append(
             {
@@ -294,7 +294,12 @@ def confirm_extraction(
         )
     )
     db.commit()
-    return _serialize(extraction, created_events=created, skipped_duplicates=skipped, warnings=[])
+    return _serialize(
+        extraction,
+        created_events=created,
+        skipped_duplicates=skipped,
+        warnings=_warnings(db, doc.profile_id, candidates),
+    )
 
 
 @router.post("/{document_id}/extraction/reject")
@@ -307,8 +312,8 @@ def reject_extraction(
     doc = _document(db, user, document_id, x_patient_profile)
     require_write(_role(db, user, doc, x_patient_profile))
     extraction = _get_extraction(db, doc)
-    if extraction.status == "confirmed":
-        raise HTTPException(409, "Confirmed extractions cannot be rejected")
+    if extraction.status in {"confirmed", "rejected"}:
+        raise HTTPException(409, "This extraction is closed and can no longer be changed")
     extraction.status = "rejected"
     extraction.updated_at = datetime.now(UTC)
     doc.processing_status = "rejected"
@@ -321,4 +326,4 @@ def reject_extraction(
         )
     )
     db.commit()
-    return _serialize(extraction)
+    return _serialize(extraction, warnings=_warnings(db, doc.profile_id, extraction.candidates))

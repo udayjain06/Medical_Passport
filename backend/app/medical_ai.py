@@ -109,14 +109,17 @@ def _ai_candidates(prompt: dict) -> list[dict]:
     for item in values:
         if not isinstance(item, dict) or not isinstance(item.get("value"), str):
             continue
-        confidence = float(item.get("confidence", 0))
-        if not 0 <= confidence <= 1:
-            continue
         try:
+            raw_confidence = item.get("confidence", 0)
+            if isinstance(raw_confidence, bool):
+                continue
+            confidence = float(raw_confidence)
+            if not 0 <= confidence <= 1:
+                continue
             clean.append(
                 CandidateFact.model_validate({**item, "review_status": "pending"}).model_dump()
             )
-        except ValueError:
+        except (TypeError, ValueError, OverflowError):
             continue  # drop one malformed or unsupported item instead of the whole run
     if not clean:
         raise ValueError("AI response contained no usable candidates")

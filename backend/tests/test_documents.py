@@ -112,6 +112,13 @@ def test_real_local_ocr_requires_patient_confirmation_before_timeline(client: Te
     assert processed.status_code == 200, processed.text
     assert processed.json()["status"] == "needs_review"
     assert "Synthetic Patient" in processed.json()["ocr_text"]
+    no_review = client.post(f"/api/documents/{document_id}/extraction/confirm", headers=ORIGIN)
+    assert no_review.status_code == 422  # nothing accepted yet
+    reviewed = [{**c, "review_status": "accepted"} for c in processed.json()["candidates"]]
+    saved = client.put(
+        f"/api/documents/{document_id}/extraction", headers=ORIGIN, json={"candidates": reviewed}
+    )
+    assert saved.status_code == 200
     confirmed = client.post(f"/api/documents/{document_id}/extraction/confirm", headers=ORIGIN)
     assert confirmed.status_code == 200
     events = client.get("/api/timeline").json()

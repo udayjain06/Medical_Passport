@@ -270,10 +270,12 @@ def document_facts(db: Session, profile_id: uuid.UUID, fields: set[str]) -> dict
         ).all()
         items = []
         for event in events:
-            if max_age_days is not None and (
-                event.event_date is None or (today - event.event_date).days > max_age_days
-            ):
-                continue
+            if max_age_days is not None:
+                if event.event_date is None:
+                    continue
+                age_days = (today - event.event_date).days
+                if age_days < 0 or age_days > max_age_days:
+                    continue
             items.append(
                 {
                     "text": (event.summary or event.title).split(" — ")[0],

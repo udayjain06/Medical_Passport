@@ -1,4 +1,5 @@
 import pytest
+from app.config import settings
 from app.database import Base, enable_sqlite_foreign_keys, get_db
 from app.main import app
 from app.rate_limit import auth_rate_limiter
@@ -16,7 +17,8 @@ def reset_rate_limits():
 
 
 @pytest.fixture
-def client():
+def client(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "document_storage_path", tmp_path / "private_uploads")
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},

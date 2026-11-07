@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     )
 
     app_env: Literal["development", "test", "production"] = "development"
-    secret_key: str = Field(default_factory=lambda: secrets.token_urlsafe(48))
+    secret_key: str = "GENERATE_A_UNIQUE_SECRET_WITH_THE_COMMAND_ABOVE"
     database_url: str = "sqlite:///./medical_passport.db"
     cors_origins: list[str] = [
         "http://localhost:3000",
