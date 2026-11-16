@@ -1,9 +1,10 @@
 import logging
 from datetime import UTC, datetime, timedelta
+from time import monotonic, sleep
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -72,6 +73,13 @@ def _deliver_auth_email(provider: EmailProvider, message) -> None:
         provider.send(message)
     except EmailDeliveryError:
         logger.warning("auth_email_delivery_failed provider=%s", settings.email_provider)
+
+
+def _pad_password_reset_response(started: float) -> None:
+    minimum_seconds = settings.auth_uniform_response_ms / 1000
+    remaining = minimum_seconds - (monotonic() - started)
+    if remaining > 0:
+        sleep(remaining)
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -234,6 +242,79 @@ def test_email_link(
     if link is None:
         raise HTTPException(404, "No test email is available")
     return {"url": link}
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=2048)
+    password: str = Field(min_length=12, max_length=128)
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    provider: EmailProvider = Depends(provide_email_provider),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    started = monotonic()
+    _rate_limit(request, "forgot-password")
+    email = str(payload.email).strip().lower()
+    user = db.scalar(select(User).where(User.email == email))
+    reset_token = None
+    if user is not None:
+        revoke_tokens(db, user.id, "password_reset")
+        reset_token = issue_token(db, user.id, "password_reset", timedelta(minutes=30))
+    db.add(
+        AuditEvent(
+            user_id=user.id if user else None,
+            action="auth.password_reset.requested",
+            target_type="user" if user else "password_reset_request",
+            target_id=user.id if user else None,
+        )
+    )
+    db.commit()
+    if user is not None and reset_token is not None:
+        background_tasks.add_task(
+            _deliver_auth_email,
+            provider,
+            auth_email(
+                user.email,
+                "password_reset",
+                _email_link("reset-password", reset_token),
+                _locale(request),
+            ),
+        )
+    _pad_password_reset_response(started)
+    return {"message": "If an account exists, password reset instructions will be sent."}
+
+
+@router.post("/reset-password")
+def reset_password(
+    payload: ResetPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    _rate_limit(request, "reset-password")
+    user = consume_token(db, payload.token, "password_reset")
+    if user is None:
+        raise HTTPException(400, "Password reset link is invalid or has expired")
+    user.password_hash = hash_password(payload.password)
+    user.session_version += 1
+    db.add(
+        AuditEvent(
+            user_id=user.id,
+            action="auth.password_reset.completed",
+            target_type="user",
+            target_id=user.id,
+        )
+    )
+    db.commit()
+    return {"status": "password_reset"}
 
 
 class DeleteAccountRequest(BaseModel):

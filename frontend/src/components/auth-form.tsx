@@ -56,6 +56,7 @@ export function AuthForm({ mode }: Props) {
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="button" type="submit" disabled={!hydrated || busy}>{busy ? "Please wait…" : signup ? "Create account" : "Log in"}</button>
         </form>
+        {!signup && <p className="form-footnote"><Link href="/forgot-password">Forgot your password?</Link></p>}
         <p className="form-footnote">{signup ? "Already registered? " : "New to Medical Passport? "}<Link href={signup ? "/login" : "/signup"}>{signup ? "Log in" : "Create an account"}</Link></p>
       </section>
     </main>

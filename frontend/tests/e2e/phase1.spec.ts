@@ -2,6 +2,17 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+async function getTestEmailLink(page: Page, purpose: "email_verification" | "password_reset") {
+  const result = await page.evaluate(async (emailPurpose) => {
+    const response = await fetch(`/api/auth/test/email-link?purpose=${emailPurpose}`);
+    return { status: response.status, body: await response.json() as { url?: string } };
+  }, purpose);
+  expect(result.status).toBe(200);
+  expect(result.body.url).toBeTruthy();
+  const link = new URL(result.body.url!);
+  return `${link.pathname}${link.search}`;
+}
+
 test("registration, protected profile, persistence, logout, and login", async ({ page }) => {
   test.setTimeout(180000);
   const screenshotDir = path.resolve(process.cwd(), "..", "docs", "demo-screenshots");
@@ -57,6 +68,13 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.getByRole("heading", { name: "Welcome, Test Patient" })).toBeVisible();
   await page.screenshot({ path: path.join(screenshotDir, "dashboard.png"), fullPage: true });
 
+  const verificationPath = await getTestEmailLink(page, "email_verification");
+  await page.goto(verificationPath);
+  await page.getByRole("button", { name: "Verify email" }).click();
+  await expect(page.getByRole("status")).toContainText("Your email is verified");
+  await page.getByRole("link", { name: "Continue to Medical Passport" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome, Test Patient" })).toBeVisible();
+
   await page.getByRole("link", { name: "Review or edit profile" }).click();
   await page.getByLabel("Known allergies").fill("Patient reports penicillin allergy");
   await page.getByLabel("Blood group").selectOption("O+");
@@ -69,6 +87,23 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.getByLabel("Known allergies")).toHaveValue("Patient reports penicillin allergy");
   await expect(page.getByLabel("Blood group")).toHaveValue("O+");
 
+  const replacementPassword = "New-safe-demo-passphrase-77";
+  await page.goto("/forgot-password");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByRole("button", { name: "Send reset instructions" }).click();
+  await expect(page.getByRole("status")).toContainText("If an account exists");
+  const resetPath = await getTestEmailLink(page, "password_reset");
+  await page.goto(resetPath);
+  await page.getByLabel("New password").fill(replacementPassword);
+  await page.getByLabel("Confirm new password").fill(replacementPassword);
+  await page.getByRole("button", { name: "Change password" }).click();
+  await expect(page.getByRole("status")).toContainText("Your password was changed");
+  await page.getByRole("link", { name: "Continue to login" }).click();
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password").fill(replacementPassword);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Review before it becomes history" })).toBeVisible();
@@ -78,7 +113,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page).toHaveURL(/\/login$/);
 
   await page.getByLabel("Email address").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password").fill(replacementPassword);
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes("/api/auth/login") && response.request().method() === "POST",
   );
@@ -313,7 +348,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   const exportDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download export" }).click();
   expect((await exportDownload).suggestedFilename()).toBe("medical-passport-export.json");
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password").fill(replacementPassword);
   await page.getByLabel("Type DELETE to confirm").fill("DELETE");
   await page.getByRole("button", { name: "Delete account permanently" }).click();
   await expect(page).toHaveURL(/\/$/);
