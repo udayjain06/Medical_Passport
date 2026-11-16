@@ -50,7 +50,11 @@ class _TestCaptureEmailProvider:
             del _test_outbox[:-100]
 
 
-def take_test_email_link(recipient: str, purpose: EmailPurpose) -> str | None:
+def take_test_email_link(
+    recipient: str, purpose: EmailPurpose | Literal["email_verification"]
+) -> str | None:
+    if purpose == "email_verification":
+        purpose = "verification"
     with _test_outbox_lock:
         for index in range(len(_test_outbox) - 1, -1, -1):
             message = _test_outbox[index]

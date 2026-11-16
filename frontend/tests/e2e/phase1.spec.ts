@@ -15,7 +15,8 @@ async function getTestEmailLink(page: Page, purpose: "email_verification" | "pas
 
 test("registration, protected profile, persistence, logout, and login", async ({ page }) => {
   test.setTimeout(180000);
-  const screenshotDir = path.resolve(process.cwd(), "..", "docs", "demo-screenshots");
+  const screenshotDir = process.env.E2E_SCREENSHOT_DIR
+    ?? path.resolve(process.cwd(), "..", "docs", "demo-screenshots");
   await mkdir(screenshotDir, { recursive: true });
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
@@ -37,7 +38,15 @@ test("registration, protected profile, persistence, logout, and login", async ({
     });
   }
   monitor(page);
-  await page.goto("/");
+  const landingResponse = await page.goto("/");
+  expect(landingResponse).not.toBeNull();
+  const landingHeaders = landingResponse!.headers();
+  expect(landingHeaders["cache-control"]).toContain("no-store");
+  expect(landingHeaders["x-content-type-options"]).toBe("nosniff");
+  expect(landingHeaders["x-frame-options"]).toBe("DENY");
+  expect(landingHeaders["permissions-policy"]).toContain("microphone=()");
+  expect(landingHeaders["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(landingHeaders["content-security-policy"]).toContain("frame-src 'self' blob:");
   await expect(page.getByRole("heading", { name: "When you cannot speak, your history should speak for you." })).toBeVisible();
   await page.screenshot({ path: path.join(screenshotDir, "landing.png"), fullPage: true });
 
@@ -94,8 +103,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.getByRole("status")).toContainText("If an account exists");
   const resetPath = await getTestEmailLink(page, "password_reset");
   await page.goto(resetPath);
-  await page.getByLabel("New password").fill(replacementPassword);
-  await page.getByLabel("Confirm new password").fill(replacementPassword);
+  await page.getByLabel("New password", { exact: true }).fill(replacementPassword);
+  await page.getByLabel("Confirm new password", { exact: true }).fill(replacementPassword);
   await page.getByRole("button", { name: "Change password" }).click();
   await expect(page.getByRole("status")).toContainText("Your password was changed");
   await page.getByRole("link", { name: "Continue to login" }).click();
@@ -246,7 +255,10 @@ test("registration, protected profile, persistence, logout, and login", async ({
   const publicContext = await page.context().browser()!.newContext();
   const publicPage = await publicContext.newPage();
   monitor(publicPage);
-  await publicPage.goto(publicUrl);
+  const publicResponse = await publicPage.goto(publicUrl);
+  expect(publicResponse).not.toBeNull();
+  expect(publicResponse!.headers()["cache-control"]).toContain("no-store");
+  expect(publicResponse!.headers()["referrer-policy"]).toBe("no-referrer");
   await expect(publicPage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
   await expect(publicPage.getByText("Test Patient", { exact: false }).first()).toBeVisible();
   await page.goto("/emergency");

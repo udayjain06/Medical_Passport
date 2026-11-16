@@ -115,6 +115,18 @@ def test_resend_verification_requires_session(client):
     assert response.status_code == 401
 
 
+def test_resend_verification_is_rate_limited(client, monkeypatch):
+    monkeypatch.setattr(settings, "auth_rate_limit_count", 1)
+    assert _register_unverified(client, "resend-rate-limit@example.com").status_code == 201
+
+    first = client.post("/api/auth/resend-verification", headers=ORIGIN)
+    second = client.post("/api/auth/resend-verification", headers=ORIGIN)
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.headers["retry-after"]
+
+
 def test_email_link_test_hook_requires_explicit_test_configuration(client, monkeypatch):
     assert register(client, "test-hook@example.com").status_code == 201
     import app.routers.auth as auth_router

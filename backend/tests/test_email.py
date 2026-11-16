@@ -11,6 +11,8 @@ from app.email import (
     ResendEmailProvider,
     SMTPEmailProvider,
     auth_email,
+    get_email_provider,
+    take_test_email_link,
 )
 
 
@@ -64,6 +66,23 @@ def test_auth_email_templates_include_plain_text_and_minimal_html(
     assert "<a href=" in message.html_body
 
 
+def test_test_email_hook_retrieves_verification_link_with_api_purpose_name():
+    recipient = "e2e-hook@example.test"
+    provider = get_email_provider(Settings(app_env="test", email_test_hook_enabled=True))
+    provider.send(
+        auth_email(
+            recipient,
+            "verification",
+            "https://app.example.test/verify-email?token=synthetic-hook-token",
+        )
+    )
+
+    assert take_test_email_link(recipient, "email_verification") == (
+        "https://app.example.test/verify-email?token=synthetic-hook-token"
+    )
+    assert take_test_email_link(recipient, "email_verification") is None
+
+
 def test_smtp_provider_sends_multipart_message(monkeypatch):
     sent = []
 
@@ -107,6 +126,55 @@ def test_smtp_provider_sends_multipart_message(monkeypatch):
     assert "HTML part" in sent[0].as_string()
 
 
+def test_provider_factory_selects_configured_delivery_adapter():
+    assert isinstance(
+        get_email_provider(Settings(app_env="development", email_provider="console")),
+        ConsoleEmailProvider,
+    )
+    assert isinstance(
+        get_email_provider(
+            Settings(app_env="development", email_provider="smtp", smtp_host="smtp.test")
+        ),
+        SMTPEmailProvider,
+    )
+    assert isinstance(
+        get_email_provider(
+            Settings(app_env="development", email_provider="resend", resend_api_key="test-key")
+        ),
+        ResendEmailProvider,
+    )
+
+
+def test_smtp_delivery_error_does_not_expose_provider_details(monkeypatch):
+    class BrokenSMTP:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def ehlo(self):
+            return None
+
+        def starttls(self, **_kwargs):
+            return None
+
+        def send_message(self, _message):
+            raise RuntimeError("smtp credential=synthetic-secret")
+
+    monkeypatch.setattr(email_module.smtplib, "SMTP", BrokenSMTP)
+    provider = SMTPEmailProvider(
+        Settings(app_env="development", email_provider="smtp", smtp_host="smtp.example.test")
+    )
+
+    with pytest.raises(EmailDeliveryError, match="could not deliver") as error:
+        provider.send(OutgoingEmail("person@example.test", "Subject", "Text", "<p>HTML</p>"))
+    assert "synthetic-secret" not in str(error.value)
+
+
 def test_resend_provider_posts_both_body_formats_without_logging_secret(monkeypatch):
     requests = []
 
@@ -138,3 +206,18 @@ def test_resend_provider_posts_both_body_formats_without_logging_secret(monkeypa
     assert request.get_header("Authorization") == "Bearer resend-secret"
     assert payload["text"] == "Text" and payload["html"] == "<p>HTML</p>"
     assert timeout == 10
+
+
+def test_resend_delivery_error_does_not_expose_provider_details(monkeypatch):
+    def fail(_request, timeout):
+        del timeout
+        raise email_module.urllib.error.URLError("resend credential=synthetic-secret")
+
+    monkeypatch.setattr(email_module.urllib.request, "urlopen", fail)
+    provider = ResendEmailProvider(
+        Settings(app_env="development", email_provider="resend", resend_api_key="test-key")
+    )
+
+    with pytest.raises(EmailDeliveryError, match="could not deliver") as error:
+        provider.send(OutgoingEmail("person@example.test", "Subject", "Text", "<p>HTML</p>"))
+    assert "synthetic-secret" not in str(error.value)
