@@ -1,0 +1,115 @@
+name: medical-passport
+
+services:
+  postgres:
+    image: postgres:16.16-alpine3.24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-medical_passport}
+      POSTGRES_USER: ${POSTGRES_USER:-medical_passport}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-this-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.12-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:1.4.6
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      SECRET_KEY: ${SECRET_KEY:-local-compose-secret-change-before-deployment-00000000}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-medical_passport}:${POSTGRES_PASSWORD:-local-only-change-this-password}@postgres:5432/${POSTGRES_DB:-medical_passport}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      REDIS_URL: redis://redis:6379/0
+      DOCUMENT_STORAGE_PATH: /data/documents
+      DOCUMENT_ENCRYPTION_KEYS: ${DOCUMENT_ENCRYPTION_KEYS:-[]}
+      MALWARE_SCAN: clamav
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+      TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-1}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
+      EMAIL_FROM: ${EMAIL_FROM:-Medical Passport <noreply@example.invalid>}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_TEST_HOOK_ENABLED: ${EMAIL_TEST_HOOK_ENABLED:-false}
+      REQUEST_MAX_SIZE_BYTES: ${REQUEST_MAX_SIZE_BYTES:-12582912}
+    volumes:
+      - document_data:/data/documents
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8010"]
+    ports:
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-8010}:8010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8010/readyz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        API_ORIGIN: http://api:8010
+    environment:
+      API_ORIGIN: http://api:8010
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  document_data:

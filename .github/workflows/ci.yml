@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, codex/auth-security-ops]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.16-alpine3.24
+        env:
+          POSTGRES_DB: medical_passport
+          POSTGRES_USER: medical_passport
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medical_passport -d medical_passport"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      SECRET_KEY: ci-test-secret-with-more-than-thirty-two-characters
+      DATABASE_URL: postgresql+psycopg://medical_passport:ci-only-password@localhost:5432/medical_passport
+      DOCUMENT_ENCRYPTION_KEYS: "[]"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements-dev.txt
+        working-directory: backend
+      - name: Check Python formatting
+        run: ruff format --check app tests
+        working-directory: backend
+      - name: Lint Python
+        run: ruff check app tests
+        working-directory: backend
+      - name: Run backend tests
+        run: pytest -q
+        working-directory: backend
+      - name: Apply and check PostgreSQL migrations
+        run: alembic upgrade head && alembic check
+        working-directory: backend
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Type-check frontend
+        run: npx tsc --noEmit
+        working-directory: frontend
+      - name: Lint frontend
+        run: npx eslint src
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+        env:
+          API_ORIGIN: http://127.0.0.1:8010
