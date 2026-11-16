@@ -9,6 +9,10 @@
 - Registration and login have in-process IP rate limits. Request validation responses omit submitted input. API responses use `Cache-Control: no-store`.
 - Audit rows record successful account/profile actions without storing request bodies or medical values.
 - Production configuration rejects a short/default secret and requires secure cookies, HTTPS CORS/public origins, PostgreSQL, a valid Fernet key set, non-console mail delivery, and ClamAV upload scanning.
+- Backend and Next.js responses set CSP with `frame-ancestors 'none'`, `nosniff`, Permissions-Policy, and no-store caching. Emergency pages and public emergency API responses also use `Referrer-Policy: no-referrer`.
+- Unsafe API request bodies are capped by `REQUEST_MAX_SIZE_BYTES` before parsers run; document uploads additionally enforce `DOCUMENT_MAX_SIZE_BYTES`.
+- Request logs are JSON and carry a server-generated request ID. Redaction removes bearer/action tokens, emergency share paths, password-like assignments, and full IPv4/IPv6 addresses; request bodies and document content are not logged.
+- `/healthz` is a liveness check and `/readyz` checks database connectivity. The `/api/health/live` and `/api/health/ready` routes remain available.
 - Authentication rate limits use the socket IP by default. `TRUSTED_PROXY_COUNT` opts into the configured trusted proxy chain; do not enable it when requests can bypass those proxies.
 
 ## Phase 2 document controls

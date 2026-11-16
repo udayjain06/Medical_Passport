@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     document_storage_path: Path = BACKEND_DIR / "private_uploads"
     document_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
+    request_max_size_bytes: int = Field(default=12 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
     malware_scan: Literal["off", "clamav"] = "off"
     clamav_host: str = "127.0.0.1"
     clamav_port: int = Field(default=3310, ge=1, le=65535)
