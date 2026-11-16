@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.encrypted_types import EncryptedJSON, EncryptedText
 
 
 def utc_now() -> datetime:
@@ -253,8 +254,8 @@ class DocumentExtraction(Base):
         index=True,
     )
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
-    ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    candidates: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+    ocr_text: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    candidates: Mapped[list[dict]] = mapped_column(EncryptedJSON(), default=list, nullable=False)
     engine_version: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False

@@ -139,3 +139,11 @@
 - **Files modified:** `backend/app/config.py`, `backend/app/routers/documents.py`, `backend/tests/test_production_hardening.py`, `.env.example`, `README.md`, and this log.
 - **Dependency:** No ClamAV Python dependency was needed; the daemon protocol uses TCP and Python's `socket` module.
 - **Verification:** Ruff format/check passed. Focused tests: **3 passed**, including an EICAR test payload with a fake scanner, ClamAV `INSTREAM` framing, infected upload rejection, and scanner-failure rejection. Full suite is pending this item's integration run.
+
+## 2026-11-16 — Auth/security operations, item 6: encrypted extraction data and key rotation
+
+- **Implemented:** OCR text and structured candidates now use the existing `MPENC1:` Fernet format through SQLAlchemy type decorators; old plaintext OCR and JSON candidate values remain readable. `DOCUMENT_ENCRYPTION_KEYS` is an ordered list (first encrypts, all decrypt), with the existing single-key setting retained as a legacy fallback. `python -m app.rotate_keys` atomically re-encrypts file blobs and rewrites OCR/candidate values using the primary key; output contains aggregate counts only. The README documents backup, dual-key rotation, verification, and retirement steps.
+- **Files added:** `backend/app/crypto_storage.py`, `backend/app/encrypted_types.py`, `backend/app/rotate_keys.py`, and `backend/tests/test_crypto_rotation.py`.
+- **Files modified:** `backend/app/config.py`, `backend/app/document_storage.py`, `backend/app/models.py`, `.env.example`, `README.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_PRIVACY.md`, and this log.
+- **Migration:** No schema migration was needed; the candidate column remains JSON and the type decorator encrypts its serialized value, preserving compatibility with the existing SQLite/PostgreSQL schema.
+- **Verification:** Ruff format/check passed; full backend suite: **63 passed, 1 existing Starlette/httpx deprecation warning**. Isolated SQLite `alembic upgrade head` and `alembic check` passed (`No new upgrade operations detected`). The key rotation integration test verified encrypted OCR, candidates, and document bytes decrypt using the new key after rotation and the old key alone no longer decrypts the ciphertext. `python -m app.rotate_keys` smoke test completed on an isolated migrated database and reported zero records to rotate.
