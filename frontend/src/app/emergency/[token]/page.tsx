@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 
 type Contact = { full_name: string; phone_number: string };
@@ -48,13 +48,38 @@ function Facts({ typed, docs, dated }: { typed?: string | null; docs?: DocFact[]
 
 export default function PublicEmergency() {
   const { token } = useParams<{ token: string }>();
-  const [data, setData] = useState<Data | null>(null);
-  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ token: string; data: Data | null; error: string }>({
+    token: "",
+    data: null,
+    error: "",
+  });
+  const requestRef = useRef<{ token: string; request: Promise<Data> } | null>(null);
+  const data = result.token === token ? result.data : null;
+  const error = result.token === token ? result.error : "";
 
   useEffect(() => {
-    apiRequest<Data>(`/public/emergency/${encodeURIComponent(token)}`)
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "This link is unavailable or expired."));
+    const request = requestRef.current?.token === token
+      ? requestRef.current.request
+      : apiRequest<Data>(`/public/emergency/${encodeURIComponent(token)}`);
+    requestRef.current = { token, request };
+
+    let active = true;
+    request
+      .then((result) => {
+        if (active) setResult({ token, data: result, error: "" });
+      })
+      .catch((e) => {
+        if (active) {
+          setResult({
+            token,
+            data: null,
+            error: e instanceof Error ? e.message : "This link is unavailable or expired.",
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   if (error) {
