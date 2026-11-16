@@ -16,6 +16,12 @@ from app import document_storage
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.malware_scan import (
+    MalwareDetected,
+    MalwareScanner,
+    MalwareScanUnavailable,
+    provide_malware_scanner,
+)
 from app.models import AuditEvent, MedicalDocument, PatientProfile, User
 from app.profile_access import require_write, resolve_profile
 
@@ -93,6 +99,7 @@ async def upload_document(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     x_patient_profile: uuid.UUID | None = Header(None),
+    scanner: MalwareScanner = Depends(provide_malware_scanner),
 ):
     if category not in CATEGORIES:
         raise HTTPException(status_code=422, detail="Unsupported document category")
@@ -110,6 +117,18 @@ async def upload_document(
         raise HTTPException(status_code=415, detail="File MIME type does not match its content")
     profile, role = _profile(db, user, x_patient_profile)
     require_write(role)
+    try:
+        scanner.scan(data)
+    except MalwareDetected:
+        raise HTTPException(
+            status_code=422,
+            detail="File was rejected because malware was detected",
+        ) from None
+    except MalwareScanUnavailable:
+        raise HTTPException(
+            status_code=503,
+            detail="Malware scanning is unavailable; the upload was rejected. Try again later.",
+        ) from None
     doc_id = uuid.uuid4()
     filename = Path(file.filename or "document").name.replace("\x00", "")
     filename = re.sub(r"[^A-Za-z0-9._ ()-]", "_", filename)[:255] or f"document.{fmt}"

@@ -131,3 +131,11 @@
 - **Files modified:** `backend/app/rate_limit.py`, `backend/app/config.py`, `backend/app/routers/emergency.py`, `backend/requirements.txt`, `backend/tests/conftest.py`, `.env.example`, `README.md`, and this log.
 - **Dependency:** Pinned `redis==5.2.1`; installed successfully into the backend virtual environment.
 - **Verification:** Ruff format/check passed. Focused fake-Redis and endpoint integration tests: **6 passed**, including counter/expiry behavior, threshold handling, hashed-key privacy, auth fail-closed, and public-emergency fail-open. The full suite is being rerun after this item.
+
+## 2026-11-16 — Auth/security operations, item 5: upload malware scanning
+
+- **Implemented:** Added a scanner protocol, an explicit local no-op scanner, and a ClamAV `clamd` TCP `INSTREAM` scanner implemented with the standard library. Uploads are scanned after size/type/role validation and before any blob or database row is written. Infection returns 422; scanner unavailability returns 503 and rejects the upload. Production settings now require `MALWARE_SCAN=clamav`; no infected payload is persisted.
+- **Files added:** `backend/app/malware_scan.py` and `backend/tests/test_malware_scan.py`.
+- **Files modified:** `backend/app/config.py`, `backend/app/routers/documents.py`, `backend/tests/test_production_hardening.py`, `.env.example`, `README.md`, and this log.
+- **Dependency:** No ClamAV Python dependency was needed; the daemon protocol uses TCP and Python's `socket` module.
+- **Verification:** Ruff format/check passed. Focused tests: **3 passed**, including an EICAR test payload with a fake scanner, ClamAV `INSTREAM` framing, infected upload rejection, and scanner-failure rejection. Full suite is pending this item's integration run.

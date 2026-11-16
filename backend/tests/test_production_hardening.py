@@ -294,6 +294,7 @@ def test_production_settings_require_encryption_and_https():
         public_app_url="https://app.example.com",
         email_provider="smtp",
         smtp_host="smtp.example.com",
+        malware_scan="clamav",
     )
     with pytest.raises(ValueError):
         Settings(**base)  # no document_encryption_key
@@ -309,6 +310,8 @@ def test_production_settings_require_encryption_and_https():
         base_http = {**base, "cors_origins": ["http://localhost:3000"]}
         Settings(**base_http, document_encryption_key=key)
     assert Settings(**base, document_encryption_key=key).app_env == "production"
+    with pytest.raises(ValueError, match="MALWARE_SCAN=clamav"):
+        Settings(**{**base, "malware_scan": "off"}, document_encryption_key=key)
     with pytest.raises(ValueError, match="EMAIL_PROVIDER=console"):
         Settings(**{**base, "email_provider": "console"}, document_encryption_key=key)
     with pytest.raises(ValueError, match="must use TLS"):

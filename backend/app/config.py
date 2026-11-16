@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     document_storage_path: Path = BACKEND_DIR / "private_uploads"
     document_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
+    malware_scan: Literal["off", "clamav"] = "off"
+    clamav_host: str = "127.0.0.1"
+    clamav_port: int = Field(default=3310, ge=1, le=65535)
+    clamav_timeout_seconds: int = Field(default=5, ge=1, le=120)
     public_app_url: str = "http://localhost:3000"
     # Number of trusted reverse proxies in front of the API (Next.js proxy = 1). 0 = use socket IP.
     trusted_proxy_count: int = Field(default=0, ge=0, le=5)
@@ -87,6 +91,8 @@ class Settings(BaseSettings):
                 raise ValueError("RESEND_API_KEY is required when EMAIL_PROVIDER=resend")
             if self.email_test_hook_enabled:
                 raise ValueError("EMAIL_TEST_HOOK_ENABLED must be false in production")
+            if self.malware_scan != "clamav":
+                raise ValueError("MALWARE_SCAN=clamav is required in production")
         elif self.secret_key == placeholder:
             # The example value is deliberately unusable as a real signing key.
             self.secret_key = secrets.token_urlsafe(48)
