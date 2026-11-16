@@ -31,3 +31,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or invalid"
         )
     return user
+
+
+def require_verified_email(user: User) -> None:
+    if user.email_verified_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Verify your email before sharing profiles or creating emergency links",
+        )

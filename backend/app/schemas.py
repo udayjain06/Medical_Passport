@@ -36,6 +36,7 @@ class UserRead(BaseModel):
     id: UUID
     email: EmailStr
     created_at: datetime
+    email_verified_at: datetime | None
 
 
 class AuthResponse(BaseModel):

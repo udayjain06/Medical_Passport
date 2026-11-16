@@ -2,7 +2,7 @@
 
 Medical Passport is a private, source-linked personal health record for India. It complements the ABHA/ABDM ecosystem and does not replace it. The application includes the Phase 0/1 account and profile foundation, a protected document vault, local OCR and human review, a source-linked timeline, emergency QR sharing, and family access controls.
 
-The app includes registration, patient profiles, a private document vault, local OCR with human review, source-linked timeline events, expiring emergency QR shares, and account-to-account family access grants. An offline rule-based extractor suggests only text present in the document; items stay pending until the patient reviews them. An optional compatible AI provider can add suggestions, with local rules used if that provider is absent or unavailable. Live ABHA/ABDM exchange is disabled pending sandbox onboarding and credentials. Email verification and password recovery are not active because no delivery provider is configured.
+The app includes registration, patient profiles, a private document vault, local OCR with human review, source-linked timeline events, expiring emergency QR shares, and account-to-account family access grants. An offline rule-based extractor suggests only text present in the document; items stay pending until the patient reviews them. An optional compatible AI provider can add suggestions, with local rules used if that provider is absent or unavailable. Live ABHA/ABDM exchange is disabled pending sandbox onboarding and credentials. New accounts can sign in before email verification, but emergency-link creation and family profile grants stay locked until verification. Password reset is not implemented yet.
 
 ## Requirements
 
@@ -34,6 +34,8 @@ The app includes registration, patient profiles, a private document vault, local
    ```
 
 The API docs are available at `http://127.0.0.1:8010/docs`; liveness and readiness checks are `/api/health/live` and `/api/health/ready`. Uploaded files default to `backend/private_uploads` (outside the frontend public directory); configure `DOCUMENT_STORAGE_PATH` and `DOCUMENT_MAX_SIZE_BYTES` in `backend/.env` as needed. The default limit is 10 MiB. Set `PUBLIC_APP_URL` to the public origin used in emergency QR links. OCR uses local RapidOCR and offline rules. To encrypt new local document blobs at rest, generate a Fernet key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and set `DOCUMENT_ENCRYPTION_KEY` in `backend/.env`; keep the key backed up and unchanged, since encrypted files cannot be read without it. A blank key is allowed for local development, and legacy plaintext blobs remain readable. Optional AI extraction requires `MEDICAL_AI_ENDPOINT`, `MEDICAL_AI_API_KEY`, and `MEDICAL_AI_MODEL`; OCR text is sent to that configured provider, and rule extraction is used if the call fails.
+
+Email verification uses signed one-time links that expire after 24 hours. The local default `EMAIL_PROVIDER=console` prints only a masked recipient and redacted subject/body; it intentionally does not expose verification links. Configure SMTP or Resend in `backend/.env` to receive usable verification links. Production startup rejects console delivery. The authenticated email-link test hook requires both `APP_ENV=test` and `EMAIL_TEST_HOOK_ENABLED=true`; production startup rejects that flag.
 
 3. In a second PowerShell window, run the frontend:
 

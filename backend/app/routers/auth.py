@@ -1,13 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+import logging
+from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import document_storage
+from app.auth_tokens import consume_token, issue_token, revoke_tokens
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.email import (
+    EmailDeliveryError,
+    EmailProvider,
+    auth_email,
+    provide_email_provider,
+    take_test_email_link,
+)
 from app.models import (
     AuditEvent,
     EmergencyShare,
@@ -22,6 +34,7 @@ from app.schemas import AuthResponse, LoginRequest, RegisterRequest, UserRead
 from app.security import COOKIE_NAME, create_session_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
+logger = logging.getLogger(__name__)
 _DUMMY_HASH = hash_password("not-a-real-user-password")
 
 
@@ -46,9 +59,29 @@ def _set_session_cookie(response: Response, user: User) -> None:
     )
 
 
+def _locale(request: Request) -> str:
+    return "hi" if request.headers.get("accept-language", "").lower().startswith("hi") else "en"
+
+
+def _email_link(path: str, token: str) -> str:
+    return f"{settings.public_app_url.rstrip('/')}/{path}?{urlencode({'token': token})}"
+
+
+def _deliver_auth_email(provider: EmailProvider, message) -> None:
+    try:
+        provider.send(message)
+    except EmailDeliveryError:
+        logger.warning("auth_email_delivery_failed provider=%s", settings.email_provider)
+
+
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def register(
-    payload: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)
+    payload: RegisterRequest,
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    provider: EmailProvider = Depends(provide_email_provider),
+    db: Session = Depends(get_db),
 ) -> AuthResponse:
     _rate_limit(request, "register")
     email = str(payload.email).strip().lower()
@@ -62,6 +95,7 @@ def register(
                 user_id=user.id, action="account.registered", target_type="user", target_id=user.id
             )
         )
+        verification_token = issue_token(db, user.id, "email_verification", timedelta(hours=24))
         db.commit()
         db.refresh(user)
     except IntegrityError:
@@ -70,6 +104,16 @@ def register(
             status_code=409, detail="An account with this email already exists"
         ) from None
     _set_session_cookie(response, user)
+    background_tasks.add_task(
+        _deliver_auth_email,
+        provider,
+        auth_email(
+            email,
+            "verification",
+            _email_link("verify-email", verification_token),
+            _locale(request),
+        ),
+    )
     return AuthResponse(user=UserRead.model_validate(user))
 
 
@@ -118,6 +162,78 @@ def logout(
 @router.get("/me", response_model=UserRead)
 def me(user: User = Depends(get_current_user)) -> User:
     return user
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=2048)
+
+
+@router.post("/verify-email")
+def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> dict[str, str]:
+    user = consume_token(db, payload.token, "email_verification")
+    if user is None:
+        raise HTTPException(400, "Verification link is invalid or has expired")
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(UTC)
+        db.add(
+            AuditEvent(
+                user_id=user.id,
+                action="auth.email_verified",
+                target_type="user",
+                target_id=user.id,
+            )
+        )
+    db.commit()
+    return {"status": "verified"}
+
+
+@router.post("/resend-verification")
+def resend_verification(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    provider: EmailProvider = Depends(provide_email_provider),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    _rate_limit(request, "resend-verification")
+    if user.email_verified_at is None:
+        revoke_tokens(db, user.id, "email_verification")
+        verification_token = issue_token(db, user.id, "email_verification", timedelta(hours=24))
+        db.add(
+            AuditEvent(
+                user_id=user.id,
+                action="auth.email_verification.resent",
+                target_type="user",
+                target_id=user.id,
+            )
+        )
+        db.commit()
+        background_tasks.add_task(
+            _deliver_auth_email,
+            provider,
+            auth_email(
+                user.email,
+                "verification",
+                _email_link("verify-email", verification_token),
+                _locale(request),
+            ),
+        )
+    return {"message": "If this account needs verification, instructions will be sent."}
+
+
+@router.get("/test/email-link")
+def test_email_link(
+    purpose: str = "email_verification",
+    user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    if settings.app_env != "test" or not settings.email_test_hook_enabled:
+        raise HTTPException(404, "Not found")
+    if purpose not in {"email_verification", "password_reset"}:
+        raise HTTPException(422, "Unsupported email purpose")
+    link = take_test_email_link(user.email, purpose)
+    if link is None:
+        raise HTTPException(404, "No test email is available")
+    return {"url": link}
 
 
 class DeleteAccountRequest(BaseModel):

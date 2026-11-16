@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlsplit
+
 from app.main import app
 from fastapi.testclient import TestClient
 
@@ -6,11 +8,22 @@ PASSWORD = "Safe-demo-passphrase-42"
 
 
 def register(client: TestClient, email: str, name: str = "Test Patient"):
-    return client.post(
+    response = client.post(
         "/api/auth/register",
         headers=ORIGIN,
         json={"full_name": name, "email": email, "password": PASSWORD},
     )
+    if response.status_code == 201:
+        message = next(
+            item
+            for item in reversed(client.app.state.test_email_messages)
+            if item.recipient.lower() == email.lower()
+        )
+        link = next(line for line in message.text_body.splitlines() if line.startswith("http"))
+        token = parse_qs(urlsplit(link).query)["token"][0]
+        verified = client.post("/api/auth/verify-email", headers=ORIGIN, json={"token": token})
+        assert verified.status_code == 200, verified.text
+    return response
 
 
 def test_health_and_readiness(client: TestClient):

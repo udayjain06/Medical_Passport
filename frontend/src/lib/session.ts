@@ -1,11 +1,16 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export async function requireSession(): Promise<void> {
+export type SessionUser = {
+  email: string;
+  email_verified_at: string | null;
+};
+
+export async function requireSession(): Promise<SessionUser> {
   const session = (await cookies()).get("mp_session")?.value;
   if (!session) redirect("/login");
 
-  const apiOrigin = process.env.API_ORIGIN ?? "http://127.0.0.1:8000";
+  const apiOrigin = process.env.API_ORIGIN ?? "http://127.0.0.1:8010";
   let response: Response;
   try {
     response = await fetch(`${apiOrigin}/api/auth/me`, {
@@ -16,4 +21,5 @@ export async function requireSession(): Promise<void> {
     throw new Error("The Medical Passport API is unavailable. Please try again shortly.");
   }
   if (!response.ok) redirect("/login");
+  return (await response.json()) as SessionUser;
 }

@@ -311,6 +311,10 @@ def test_production_settings_require_encryption_and_https():
     assert Settings(**base, document_encryption_key=key).app_env == "production"
     with pytest.raises(ValueError, match="EMAIL_PROVIDER=console"):
         Settings(**{**base, "email_provider": "console"}, document_encryption_key=key)
+    with pytest.raises(ValueError, match="must use TLS"):
+        Settings(**base, document_encryption_key=key, smtp_starttls=False)
+    with pytest.raises(ValueError, match="EMAIL_TEST_HOOK_ENABLED"):
+        Settings(**base, document_encryption_key=key, email_test_hook_enabled=True)
 
 
 def test_rules_parse_indian_dates_and_ignore_none_allergies():

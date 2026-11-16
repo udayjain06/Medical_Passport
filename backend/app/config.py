@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     smtp_use_ssl: bool = False
     resend_api_key: str | None = None
+    email_test_hook_enabled: bool = False
     medical_ai_endpoint: str | None = None
     medical_ai_api_key: str | None = None
     medical_ai_model: str | None = None
@@ -78,8 +79,12 @@ class Settings(BaseSettings):
                 raise ValueError("EMAIL_PROVIDER=console is allowed only outside production")
             if self.email_provider == "smtp" and not self.smtp_host:
                 raise ValueError("SMTP_HOST is required when EMAIL_PROVIDER=smtp")
+            if self.email_provider == "smtp" and not self.smtp_use_ssl and not self.smtp_starttls:
+                raise ValueError("Production SMTP delivery must use TLS")
             if self.email_provider == "resend" and not self.resend_api_key:
                 raise ValueError("RESEND_API_KEY is required when EMAIL_PROVIDER=resend")
+            if self.email_test_hook_enabled:
+                raise ValueError("EMAIL_TEST_HOOK_ENABLED must be false in production")
         elif self.secret_key == placeholder:
             # The example value is deliberately unusable as a real signing key.
             self.secret_key = secrets.token_urlsafe(48)

@@ -10,6 +10,7 @@ import urllib.request
 from dataclasses import dataclass
 from email.message import EmailMessage as MimeMessage
 from email.utils import parseaddr
+from threading import Lock
 from typing import Literal, Protocol
 
 from app.config import Settings, settings
@@ -25,6 +26,7 @@ class OutgoingEmail:
     subject: str
     text_body: str
     html_body: str
+    purpose: EmailPurpose | None = None
 
 
 class EmailProvider(Protocol):
@@ -33,6 +35,32 @@ class EmailProvider(Protocol):
 
 class EmailDeliveryError(RuntimeError):
     """An email provider could not accept a message; details are deliberately redacted."""
+
+
+_test_outbox: list[OutgoingEmail] = []
+_test_outbox_lock = Lock()
+
+
+class _TestCaptureEmailProvider:
+    """In-memory delivery for explicit, isolated E2E runs only."""
+
+    def send(self, message: OutgoingEmail) -> None:
+        with _test_outbox_lock:
+            _test_outbox.append(message)
+            del _test_outbox[:-100]
+
+
+def take_test_email_link(recipient: str, purpose: EmailPurpose) -> str | None:
+    with _test_outbox_lock:
+        for index in range(len(_test_outbox) - 1, -1, -1):
+            message = _test_outbox[index]
+            if message.recipient.lower() != recipient.lower() or message.purpose != purpose:
+                continue
+            del _test_outbox[index]
+            return next(
+                (line for line in message.text_body.splitlines() if line.startswith("http")), None
+            )
+    return None
 
 
 def _masked_recipient(address: str) -> str:
@@ -137,6 +165,8 @@ class ResendEmailProvider:
 
 
 def get_email_provider(config: Settings = settings) -> EmailProvider:
+    if config.app_env == "test" and config.email_test_hook_enabled:
+        return _TestCaptureEmailProvider()
     if config.email_provider == "console":
         return ConsoleEmailProvider(config)
     if config.email_provider == "smtp":
@@ -144,6 +174,10 @@ def get_email_provider(config: Settings = settings) -> EmailProvider:
     if config.email_provider == "resend":
         return ResendEmailProvider(config)
     raise EmailDeliveryError("Unsupported email provider")
+
+
+def provide_email_provider() -> EmailProvider:
+    return get_email_provider(settings)
 
 
 def auth_email(
@@ -207,4 +241,4 @@ def auth_email(
         + html.escape(expiry)
         + "</p></main></body></html>"
     )
-    return OutgoingEmail(recipient, subject, text_body, html_body)
+    return OutgoingEmail(recipient, subject, text_body, html_body, purpose)

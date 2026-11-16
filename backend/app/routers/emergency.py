@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_verified_email
 from app.models import (
     AuditEvent,
     EmergencyAccessLog,
@@ -67,6 +67,7 @@ def create_share(
         raise HTTPException(422, f"Links can last at most {settings.emergency_max_hours} hours")
     profile, role = get_profile(db, user, x_patient_profile)
     require_write(role)
+    require_verified_email(user)
     return _issue_share(db, user, profile, payload.fields, payload.expires_in_hours, payload.label)
 
 
@@ -207,6 +208,7 @@ def renew_share(
         raise HTTPException(422, f"Links can last at most {settings.emergency_max_hours} hours")
     profile, role = get_profile(db, user, x_patient_profile)
     require_write(role)
+    require_verified_email(user)
     old = _owned_share(db, profile, share_id)
     old.revoked_at = old.revoked_at or datetime.now(UTC)
     return _issue_share(

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_verified_email
 from app.models import AuditEvent, EmergencyShare, PatientProfile, ProfileAccess, User
 
 router = APIRouter(prefix="/api/profiles", tags=["family profiles"])
@@ -147,6 +147,7 @@ def grant_access(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    require_verified_email(user)
     profile = db.scalar(
         select(PatientProfile).where(
             PatientProfile.id == profile_id, PatientProfile.user_id == user.id
