@@ -297,6 +297,7 @@ def public_emergency(token: str, request: Request, db: Session = Depends(get_db)
         settings.emergency_access_rate_per_minute,
         60,
         "Too many emergency lookups from this network. Try again in a minute.",
+        fail_open=True,
     )
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     share = db.scalar(select(EmergencyShare).where(EmergencyShare.token_hash == token_hash))

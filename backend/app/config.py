@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     auth_rate_limit_count: int = Field(default=10, ge=1, le=1000)
     auth_rate_limit_window_seconds: int = Field(default=600, ge=1, le=86400)
     auth_uniform_response_ms: int = Field(default=150, ge=0, le=2000)
+    redis_url: str | None = None
     document_storage_path: Path = BACKEND_DIR / "private_uploads"
     document_max_size_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
     public_app_url: str = "http://localhost:3000"

@@ -20,9 +20,12 @@ class _CapturingEmailProvider:
 
 @pytest.fixture(autouse=True)
 def reset_rate_limits():
-    auth_rate_limiter._requests.clear()
+    requests = getattr(auth_rate_limiter, "_requests", None)
+    if requests is not None:
+        requests.clear()
     yield
-    auth_rate_limiter._requests.clear()
+    if requests is not None:
+        requests.clear()
 
 
 @pytest.fixture

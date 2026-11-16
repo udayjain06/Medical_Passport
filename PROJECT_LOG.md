@@ -123,3 +123,11 @@
 - **Files added:** `backend/tests/test_password_reset.py`, `frontend/src/components/forgot-password-form.tsx`, `frontend/src/components/reset-password-form.tsx`, `frontend/src/app/forgot-password/page.tsx`, and `frontend/src/app/reset-password/page.tsx`.
 - **Files modified:** `backend/app/config.py`, `backend/app/routers/auth.py`, `.env.example`, `README.md`, `frontend/src/components/auth-form.tsx`, `frontend/tests/e2e/phase1.spec.ts`, and this log.
 - **Verification:** Backend Ruff format/check passed; full backend suite: **52 passed, 1 existing Starlette/httpx deprecation warning**. Frontend TypeScript and ESLint passed. The Playwright journey now covers verification and password reset; full browser verification remains scheduled with the final E2E pass after the remaining operations work is integrated.
+
+## 2026-11-16 — Auth/security operations, item 4: shared rate limiting
+
+- **Implemented:** Added a `RateLimiter` interface with the existing in-memory behavior as the default and a Redis implementation selected by `REDIS_URL`. Redis uses one Lua script to atomically increment a counter and set expiry on the first hit. Redis keys contain a SHA-256 digest instead of client IPs. Authentication endpoints fail closed with a generic 503 when Redis is unavailable; public emergency lookups fail open with a privacy-safe operational log message.
+- **Files added:** `backend/tests/test_rate_limit.py`.
+- **Files modified:** `backend/app/rate_limit.py`, `backend/app/config.py`, `backend/app/routers/emergency.py`, `backend/requirements.txt`, `backend/tests/conftest.py`, `.env.example`, `README.md`, and this log.
+- **Dependency:** Pinned `redis==5.2.1`; installed successfully into the backend virtual environment.
+- **Verification:** Ruff format/check passed. Focused fake-Redis and endpoint integration tests: **6 passed**, including counter/expiry behavior, threshold handling, hashed-key privacy, auth fail-closed, and public-emergency fail-open. The full suite is being rerun after this item.
