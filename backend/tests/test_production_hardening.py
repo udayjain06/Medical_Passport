@@ -292,6 +292,8 @@ def test_production_settings_require_encryption_and_https():
         cookie_secure=True,
         cors_origins=["https://app.example.com"],
         public_app_url="https://app.example.com",
+        email_provider="smtp",
+        smtp_host="smtp.example.com",
     )
     with pytest.raises(ValueError):
         Settings(**base)  # no document_encryption_key
@@ -307,6 +309,8 @@ def test_production_settings_require_encryption_and_https():
         base_http = {**base, "cors_origins": ["http://localhost:3000"]}
         Settings(**base_http, document_encryption_key=key)
     assert Settings(**base, document_encryption_key=key).app_env == "production"
+    with pytest.raises(ValueError, match="EMAIL_PROVIDER=console"):
+        Settings(**{**base, "email_provider": "console"}, document_encryption_key=key)
 
 
 def test_rules_parse_indian_dates_and_ignore_none_allergies():

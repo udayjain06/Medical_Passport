@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     document_encryption_key: str | None = None
     emergency_max_hours: int = Field(default=8760, ge=1, le=87600)
     emergency_access_rate_per_minute: int = Field(default=30, ge=1, le=1000)
+    email_provider: Literal["console", "smtp", "resend"] = "console"
+    email_from: str = "Medical Passport <noreply@example.invalid>"
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_starttls: bool = True
+    smtp_use_ssl: bool = False
+    resend_api_key: str | None = None
     medical_ai_endpoint: str | None = None
     medical_ai_api_key: str | None = None
     medical_ai_model: str | None = None
@@ -65,6 +74,12 @@ class Settings(BaseSettings):
                 raise ValueError("PUBLIC_APP_URL must use https in production")
             if not self.database_url.startswith("postgresql+psycopg://"):
                 raise ValueError("Production DATABASE_URL must use the PostgreSQL psycopg driver")
+            if self.email_provider == "console":
+                raise ValueError("EMAIL_PROVIDER=console is allowed only outside production")
+            if self.email_provider == "smtp" and not self.smtp_host:
+                raise ValueError("SMTP_HOST is required when EMAIL_PROVIDER=smtp")
+            if self.email_provider == "resend" and not self.resend_api_key:
+                raise ValueError("RESEND_API_KEY is required when EMAIL_PROVIDER=resend")
         elif self.secret_key == placeholder:
             # The example value is deliberately unusable as a real signing key.
             self.secret_key = secrets.token_urlsafe(48)
