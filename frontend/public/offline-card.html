@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#145b42" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Offline emergency card · Medical Passport</title>
+    <link rel="stylesheet" href="/offline-card.css" />
+    <script src="/offline-card-crypto.js" defer></script>
+    <script src="/offline-card.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <p class="eyebrow">Medical Passport · आपातकालीन कार्ड</p>
+      <h1>Offline emergency card</h1>
+      <p class="intro">This card is stored encrypted on this device. Unlock it with the PIN you chose when saving it.</p>
+      <p class="intro hi">यह कार्ड इस डिवाइस पर एन्क्रिप्ट करके रखा गया है। इसे खोलने के लिए सेव करते समय चुना गया PIN डालें।</p>
+
+      <section id="unlock-panel" class="panel" aria-labelledby="unlock-title">
+        <h2 id="unlock-title">Unlock card · कार्ड खोलें</h2>
+        <form id="unlock-form">
+          <label for="pin">PIN · पिन</label>
+          <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="off" required maxlength="64" />
+          <button type="submit">Unlock · खोलें</button>
+        </form>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="card" class="card" hidden aria-live="polite">
+        <p id="last-synced" class="synced"></p>
+        <h2 id="patient-name" class="patient-name"></h2>
+        <div id="facts" class="facts"></div>
+        <div class="actions">
+          <button id="lock-button" class="secondary" type="button">Lock card · बंद करें</button>
+          <button id="remove-button" class="danger" type="button">Remove from this device · इस डिवाइस से हटाएँ</button>
+        </div>
+      </section>
+
+      <footer>
+        <p>This local card can be out of date. Verify medicines and details with the patient or clinician. For an emergency in India, call 112.</p>
+        <p class="hi">यह कार्ड पुराना हो सकता है। दवाओं और जानकारी की पुष्टि करें। भारत में आपात स्थिति के लिए 112 पर कॉल करें।</p>
+        <a href="/emergency">Return to Medical Passport · वापस जाएँ</a>
+      </footer>
+    </main>
+  </body>
+</html>

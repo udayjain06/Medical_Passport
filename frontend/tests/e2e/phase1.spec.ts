@@ -67,6 +67,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByLabel("Full name").fill("Test Patient");
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password").fill(password);
+  await page.getByLabel("I agree to the Terms.").check();
+  await page.getByLabel("I acknowledge the Privacy notice.").check();
   const registerResponse = page.waitForResponse((response) =>
     response.url().includes("/api/auth/register") && response.request().method() === "POST",
   );
@@ -198,38 +200,120 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByRole("button", { name: "Close" }).click();
   await page.goto("/timeline");
   await expect(page.getByText("Source Text", { exact: false })).toBeVisible();
-  const sourceFilter = page.getByLabel("Filter source document");
+  const timelineFilters = page.getByRole("region", { name: "Timeline filters" });
+  const sourceFilter = timelineFilters.getByLabel("All sources");
   await sourceFilter.selectOption({ label: "synthetic-lab-report.png" });
   await expect(sourceFilter).toHaveValue(/.+/);
   await expect(page.locator(".timeline-item").first()).toBeVisible();
-  await page.getByLabel("Filter category").selectOption("Medical observation");
+  const categoryFilter = timelineFilters.getByLabel("Category");
+  await categoryFilter.selectOption("Medical observation");
   await expect(page.getByRole("heading", { name: /Synthetic Lab Report/ })).toBeVisible();
-  await page.getByLabel("Filter source document").selectOption("");
-  await page.getByLabel("Filter category").selectOption("");
+  await sourceFilter.selectOption("");
+  await categoryFilter.selectOption("");
   await page.getByLabel("Event title").fill("E2E timeline event");
-  await page.getByLabel("Event category").selectOption("Allergy");
+  await page.getByLabel("Category").first().selectOption("Allergy");
   await page.getByLabel("Event date").fill("2025-04-12");
-  await page.getByLabel("Event review status").selectOption("conflict");
+  await page.getByLabel("Review status").first().selectOption("conflict");
   await page.getByLabel("Conflict group").fill("e2e-conflict");
   await page.getByRole("button", { name: "Add event" }).click();
   await expect(page.getByRole("heading", { name: "E2E timeline event" })).toBeVisible();
-  await page.getByLabel("Filter category").selectOption("Allergy");
+  await categoryFilter.selectOption("Allergy");
   await expect(page.locator(".timeline-item")).toHaveCount(1);
   const e2eEvent = page.locator(".timeline-item").filter({ has: page.getByRole("heading", { name: "E2E timeline event" }) });
   await e2eEvent.getByRole("button", { name: "Edit" }).click();
   await page.getByLabel("Event title").fill("E2E edited timeline event");
-  await page.getByLabel("Event review status").selectOption("uncertain");
+  await page.getByLabel("Review status").first().selectOption("uncertain");
   await page.getByLabel("Why is this uncertain?").fill("Synthetic test uncertainty.");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("heading", { name: "E2E edited timeline event" })).toBeVisible();
-  await page.getByLabel("Filter review status").selectOption("uncertain");
+  const reviewStatusFilter = timelineFilters.getByLabel("Review status");
+  await reviewStatusFilter.selectOption("uncertain");
   await expect(page.getByText("Synthetic test uncertainty.")).toBeVisible();
   page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByRole("heading", { name: "E2E edited timeline event" })).toHaveCount(0);
-  await page.getByLabel("Filter review status").selectOption("");
+  await reviewStatusFilter.selectOption("");
 
   await page.goto("/emergency");
+  const offlineFields = page.getByRole("group", { name: "Choose fields for the offline card" });
+  await offlineFields.getByLabel("Patient name").check();
+  await offlineFields.getByLabel("Blood group").check();
+  await offlineFields.getByLabel("Known allergies").check();
+  await offlineFields.getByLabel("Emergency contacts").check();
+  await page.getByLabel("Set an offline PIN (8 or more digits)").fill("13572468");
+  await page.getByLabel("Confirm offline PIN").fill("13572468");
+  await page.getByRole("checkbox", { name: /I understand this local copy/ }).check();
+  await page.getByRole("button", { name: "Save encrypted card on this device" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Encrypted emergency card saved" })).toBeVisible();
+  const offlineHref = await page.getByRole("link", { name: "Open offline card" }).getAttribute("href");
+  expect(offlineHref).toBeTruthy();
+  const offlineUrl = new URL(offlineHref!, page.url()).toString();
+  const profileId = new URL(offlineUrl).searchParams.get("profile");
+  expect(profileId).toBeTruthy();
+  const storedCard = await page.evaluate(async (id) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("medical-passport-offline-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const record = await new Promise<{ ciphertext: ArrayBuffer }>((resolve, reject) => {
+        const request = database.transaction("cards", "readonly").objectStore("cards").get(id);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const cleartext = new TextDecoder().decode(record.ciphertext);
+      return {
+        hasCiphertext: record.ciphertext instanceof ArrayBuffer,
+        containsPatientData: cleartext.includes("Test Patient") || cleartext.includes("Patient reports penicillin allergy"),
+      };
+    } finally {
+      database.close();
+    }
+  }, profileId!);
+  expect(storedCard.hasCiphertext).toBe(true);
+  expect(storedCard.containsPatientData).toBe(false);
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  const staticCache = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const entries: string[] = [];
+    for (const name of names) {
+      const cache = await caches.open(name);
+      for (const request of await cache.keys()) entries.push(new URL(request.url).pathname);
+    }
+    return { names, entries: entries.sort() };
+  });
+  expect(staticCache.names).toEqual(["medical-passport-static-shell-v1"]);
+  expect(staticCache.entries).toEqual([
+    "/icons/medical-passport.svg",
+    "/manifest.webmanifest",
+    "/offline-card-crypto.js",
+    "/offline-card.css",
+    "/offline-card.html",
+    "/offline-card.js",
+  ]);
+  expect(staticCache.entries.some((entry) => entry.startsWith("/api/") || entry.startsWith("/emergency/"))).toBe(false);
+  await page.context().setOffline(true);
+  const offlinePage = await page.context().newPage();
+  await offlinePage.goto(offlineUrl);
+  await offlinePage.getByLabel("PIN · पिन").fill("00000000");
+  await offlinePage.getByRole("button", { name: "Unlock · खोलें" }).click();
+  await expect(offlinePage.getByRole("status")).toContainText("PIN did not match");
+  await expect(offlinePage.getByRole("heading", { name: "Test Patient" })).toHaveCount(0);
+  await offlinePage.getByLabel("PIN · पिन").fill("13572468");
+  await offlinePage.getByRole("button", { name: "Unlock · खोलें" }).click();
+  await expect(offlinePage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
+  await expect(offlinePage.getByText("Patient reports penicillin allergy")).toBeVisible();
+  await expect(offlinePage.locator("#last-synced")).toContainText("Last synced");
+  await offlinePage.once("dialog", (dialog) => dialog.accept());
+  await offlinePage.getByRole("button", { name: "Remove from this device" }).click();
+  await expect(offlinePage.getByRole("status")).toContainText("removed from this device");
+  await offlinePage.close();
+  await page.context().setOffline(false);
+
   await page.locator("#share-expiry").selectOption("8760");
   await page.locator("#share-label").fill("Wallet card");
   await page.getByText("I understand anyone with this QR link can view the selected information.").click();
@@ -321,6 +405,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await familyPage.getByLabel("Full name").fill("Family Member");
   await familyPage.getByLabel("Email address").fill(familyEmail);
   await familyPage.getByLabel("Password").fill(password);
+  await familyPage.getByLabel("I agree to the Terms.").check();
+  await familyPage.getByLabel("I acknowledge the Privacy notice.").check();
   await familyPage.getByRole("button", { name: "Create account" }).click();
   await expect(familyPage).toHaveURL(/\/dashboard$/);
   await page.goto("/family");

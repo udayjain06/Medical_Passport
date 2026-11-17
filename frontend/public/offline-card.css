@@ -1,0 +1,50 @@
+:root {
+  color-scheme: light;
+  font-family: Arial, sans-serif;
+  color: #17231d;
+  background: #f3f6f3;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+.shell { width: min(720px, calc(100% - 32px)); margin: 28px auto; }
+.eyebrow { color: #145b42; font-size: 13px; font-weight: 700; }
+h1 { margin: 8px 0; font-size: clamp(30px, 7vw, 46px); letter-spacing: -0.02em; line-height: 1.05; }
+h2 { margin-top: 0; }
+.intro, footer { color: #394840; line-height: 1.55; }
+.hi { color: #3f4c44; }
+.panel, .card, .facts article { background: white; border: 1px solid #ccd8cf; border-radius: 14px; padding: 20px; }
+.panel { margin-top: 22px; }
+form { display: grid; gap: 10px; }
+label { font-weight: 700; }
+input { min-height: 48px; padding: 10px 12px; border: 1px solid #738278; border-radius: 8px; font: inherit; }
+button { min-height: 48px; padding: 10px 15px; border: 0; border-radius: 9px; color: white; background: #145b42; font: inherit; font-weight: 700; cursor: pointer; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #d28b00; outline-offset: 3px; }
+.secondary { color: #145b42; background: #e7f1ea; }
+.danger { color: #7c1d17; background: #fff0ee; }
+.status { min-height: 24px; color: #7c1d17; }
+.card { margin-top: 18px; }
+.patient-name { font-size: clamp(32px, 8vw, 50px); letter-spacing: -0.02em; }
+.synced { color: #45534b; font-size: 14px; }
+.facts { display: grid; gap: 12px; }
+.facts article h3 { margin: 0 0 8px; font-size: 16px; }
+.facts article p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.facts .alert { border: 2px solid #9f271e; background: #fff4f2; }
+.facts .alert h3 { color: #8e211a; }
+.facts a { display: inline-flex; margin-top: 10px; min-height: 48px; align-items: center; padding: 10px 14px; border-radius: 9px; background: #145b42; color: white; font-weight: 700; text-decoration: none; }
+.actions { display: grid; gap: 10px; margin-top: 18px; }
+footer { margin: 22px 2px; font-size: 14px; }
+footer a { color: #145b42; font-weight: 700; }
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@media (prefers-contrast: more) {
+  .panel, .card, .facts article { border-color: #17231d; }
+  .intro, footer, .hi, .synced { color: #17231d; }
+}

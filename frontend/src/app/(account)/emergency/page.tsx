@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { OfflineEmergencyCard } from "@/components/offline-emergency-card";
 
 const FIELDS = ["full_name", "blood_group", "known_allergies", "major_conditions", "current_medications", "emergency_contacts"] as const;
 const EXPIRY_OPTIONS = [
@@ -191,6 +192,8 @@ export default function Emergency() {
           </div>
         )}
       </section>
+
+      <OfflineEmergencyCard />
 
       <section className="panel share-list">
         <h2>{t("activePreviousLinks")}</h2>

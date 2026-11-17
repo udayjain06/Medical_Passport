@@ -9,6 +9,8 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   `connect-src 'self'${development ? " ws: wss:" : ""}`,
   "frame-src 'self' blob:",
+  "worker-src 'self'",
+  "manifest-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
