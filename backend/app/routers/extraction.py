@@ -9,9 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import document_storage
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.extraction import extract_pages
+from app.extraction import DocumentImageTooLargeError, extract_pages
 from app.medical_ai import ALLOWED_FIELDS, extract_candidates
 from app.models import (
     AuditEvent,
@@ -22,6 +23,7 @@ from app.models import (
     User,
 )
 from app.profile_access import require_write
+from app.rate_limit import auth_rate_limiter
 from app.routers.documents import _document
 from app.structured_extraction import names_match
 
@@ -114,6 +116,12 @@ def process_document(
             409,
             "This document is already confirmed. Delete its timeline entries before re-processing.",
         )
+    auth_rate_limiter.check(
+        f"document-process:{user.id}",
+        settings.document_process_rate_limit_count,
+        settings.document_process_rate_limit_window_seconds,
+        "Too many document processing requests. Please try again later.",
+    )
     if extraction is None:
         extraction = DocumentExtraction(
             document_id=doc.id,
@@ -139,6 +147,11 @@ def process_document(
         extraction.status = "needs_review"
         doc.processing_status = extraction.status
         db.commit()
+    except DocumentImageTooLargeError:
+        extraction.status = "failed"
+        doc.processing_status = "failed"
+        db.commit()
+        raise HTTPException(422, "Image exceeds the safe pixel limit for OCR") from None
     except Exception:
         extraction.status = "failed"
         doc.processing_status = "failed"

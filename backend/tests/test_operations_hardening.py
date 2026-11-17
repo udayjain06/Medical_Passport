@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import json
 import logging
 
@@ -20,6 +21,17 @@ def test_health_aliases_and_api_security_headers(client: TestClient):
     assert "frame-ancestors 'none'" in live.headers["content-security-policy"]
     assert live.headers["permissions-policy"] == "camera=(self), microphone=(), geolocation=()"
     assert live.headers["x-request-id"]
+
+
+def test_api_documentation_routes_are_disabled_in_production(monkeypatch):
+    import app.main as main
+
+    monkeypatch.setattr(main.settings, "app_env", "production")
+    production_main = importlib.reload(main)
+    with TestClient(production_main.app) as production_client:
+        assert production_client.get("/docs").status_code == 404
+        assert production_client.get("/redoc").status_code == 404
+        assert production_client.get("/openapi.json").status_code == 404
 
 
 def test_public_emergency_response_is_no_store_and_has_no_referrer(client: TestClient):

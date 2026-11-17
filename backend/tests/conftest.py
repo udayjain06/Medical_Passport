@@ -36,11 +36,15 @@ def client(tmp_path, monkeypatch):
     app.dependency_overrides[provide_email_provider] = lambda: _CapturingEmailProvider(
         email_messages
     )
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    if settings.app_env == "test" and settings.database_url.startswith("postgresql+psycopg://"):
+        engine = create_engine(settings.database_url, pool_pre_ping=True)
+        Base.metadata.drop_all(engine)
+    else:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     enable_sqlite_foreign_keys(engine)
     Base.metadata.create_all(engine)
     testing_sessions = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -59,4 +63,5 @@ def client(tmp_path, monkeypatch):
     app.dependency_overrides.clear()
     del app.state.test_email_messages
     del app.state.test_sessions
+    Base.metadata.drop_all(engine)
     engine.dispose()

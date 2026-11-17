@@ -135,3 +135,52 @@ def test_real_local_ocr_requires_patient_confirmation_before_timeline(client: Te
     assert retained["source_candidate_id"]
     assert retained["source_document_filename"] == "synthetic.png"
     assert retained["source_document_checksum"] == uploaded.json()["sha256_checksum"]
+
+
+def test_image_pixel_limit_returns_clear_422(client: TestClient, monkeypatch):
+    import app.extraction as extraction
+    import app.routers.extraction as extraction_router
+
+    assert register(client, "large-image@example.com").status_code == 201
+    monkeypatch.setattr(extraction.Image, "MAX_IMAGE_PIXELS", 100)
+    uploaded = client.post(
+        "/api/documents",
+        headers=ORIGIN,
+        files={"file": ("large.png", _large_png(), "image/png")},
+    )
+    assert uploaded.status_code == 201
+    monkeypatch.setattr(extraction_router, "extract_pages", extraction.extract_pages)
+    response = client.post(f"/api/documents/{uploaded.json()['id']}/process", headers=ORIGIN)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Image exceeds the safe pixel limit for OCR"
+
+
+def _large_png() -> bytes:
+    image = Image.new("RGB", (40, 40), "white")
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    return stream.getvalue()
+
+
+def test_document_processing_is_limited_per_user(client: TestClient, monkeypatch):
+    import app.routers.extraction as extraction_router
+    from app.config import settings
+
+    assert register(client, "process-limit@example.com").status_code == 201
+    monkeypatch.setattr(settings, "document_process_rate_limit_count", 1)
+    monkeypatch.setattr(extraction_router, "extract_pages", lambda _data, _fmt: [])
+    document_ids = []
+    for filename in ("first.png", "second.png"):
+        response = client.post(
+            "/api/documents",
+            headers=ORIGIN,
+            files={"file": (filename, _large_png(), "image/png")},
+        )
+        assert response.status_code == 201
+        document_ids.append(response.json()["id"])
+    assert (
+        client.post(f"/api/documents/{document_ids[0]}/process", headers=ORIGIN).status_code == 200
+    )
+    limited = client.post(f"/api/documents/{document_ids[1]}/process", headers=ORIGIN)
+    assert limited.status_code == 429
+    assert "Too many document processing requests" in limited.json()["detail"]

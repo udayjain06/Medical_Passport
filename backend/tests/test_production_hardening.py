@@ -295,6 +295,8 @@ def test_production_settings_require_encryption_and_https():
         email_provider="smtp",
         smtp_host="smtp.example.com",
         malware_scan="clamav",
+        redis_url="redis://redis:6379/0",
+        trusted_proxy_count=1,
     )
     with pytest.raises(ValueError):
         Settings(**base)  # no document_encryption_key
@@ -318,6 +320,10 @@ def test_production_settings_require_encryption_and_https():
         Settings(**base, document_encryption_key=key, smtp_starttls=False)
     with pytest.raises(ValueError, match="EMAIL_TEST_HOOK_ENABLED"):
         Settings(**base, document_encryption_key=key, email_test_hook_enabled=True)
+    with pytest.raises(ValueError, match="REDIS_URL"):
+        Settings(**{**base, "redis_url": None}, document_encryption_key=key)
+    with pytest.raises(ValueError, match="TRUSTED_PROXY_COUNT"):
+        Settings(**{**base, "trusted_proxy_count": 0}, document_encryption_key=key)
 
 
 def test_rules_parse_indian_dates_and_ignore_none_allergies():

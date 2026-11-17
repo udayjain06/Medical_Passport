@@ -7,6 +7,7 @@
 - All profile reads and writes require authentication and are scoped to the authenticated user. Writes reject an absent or unapproved `Origin`.
 - CORS origins are explicit configuration. The Next.js server proxies API traffic so the browser uses a same-origin route.
 - Registration and login have in-process IP rate limits. Request validation responses omit submitted input. API responses use `Cache-Control: no-store`.
+- Registration returns `409` for an already-used email as a deliberate usability tradeoff; this can reveal that an account exists, so avoid exposing the response in public or shared contexts.
 - Audit rows record successful account/profile actions without storing request bodies or medical values.
 - Production configuration rejects a short/default secret and requires secure cookies, HTTPS CORS/public origins, PostgreSQL, a valid Fernet key set, non-console mail delivery, and ClamAV upload scanning.
 - Backend and Next.js responses set CSP with `frame-ancestors 'none'`, `nosniff`, Permissions-Policy, and no-store caching. Emergency pages and public emergency API responses also use `Referrer-Policy: no-referrer`.

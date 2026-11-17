@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Medical Passport API",
     version="0.1.0",
+    docs_url=None if settings.app_env == "production" else "/docs",
+    redoc_url=None if settings.app_env == "production" else "/redoc",
+    openapi_url=None if settings.app_env == "production" else "/openapi.json",
     description=(
         "Private patient profile and authentication API. "
         "Medical history features are being built incrementally."

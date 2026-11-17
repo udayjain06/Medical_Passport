@@ -25,10 +25,11 @@ Copy `.env.example` to `.env` and replace every example value. Compose reads thi
 | `EMAIL_PROVIDER` | Yes | `smtp` or `resend` in production; console delivery is development only. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS`, `SMTP_USE_SSL`, `EMAIL_FROM` | For SMTP | Configure authenticated TLS delivery. Use either STARTTLS or implicit TLS. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | For Resend | Configure the Resend API provider and a verified sender. |
-| `REDIS_URL` | Recommended | Shared rate-limit store. Compose points to its internal Redis service. Auth routes fail closed when configured Redis is unavailable. |
+| `REDIS_URL` | Yes | Shared rate-limit store; production startup fails without it. Compose defaults to its internal Redis service. Auth routes fail closed when Redis is unavailable. |
 | `MALWARE_SCAN` | `clamav` | Production requires scanning. Compose points the API at the ClamAV service. |
 | `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_TIMEOUT_SECONDS` | Yes | Scanner service address and timeout; Compose supplies the internal host and port. |
-| `TRUSTED_PROXY_COUNT` | Yes | Number of trusted proxy hops appending `X-Forwarded-For`. Compose defaults to `1` because the API is called through Next.js. |
+| `TRUSTED_PROXY_COUNT` | Yes | Production requires at least one trusted proxy hop appending `X-Forwarded-For`. Compose defaults to `1` because the API is called through Next.js; direct local development can use `0`. |
+| `DOCUMENT_PROCESS_RATE_LIMIT_COUNT`, `DOCUMENT_PROCESS_RATE_LIMIT_WINDOW_SECONDS` | Optional | Per-user OCR processing limit; defaults to 10 attempts per 10 minutes. |
 | `REQUEST_MAX_SIZE_BYTES`, `DOCUMENT_MAX_SIZE_BYTES` | Optional | Request and file upload limits. |
 | `EMERGENCY_MAX_HOURS`, `EMERGENCY_ACCESS_RATE_PER_MINUTE` | Optional | Emergency-share expiry and public endpoint rate limit. |
 | `MEDICAL_AI_ENDPOINT`, `MEDICAL_AI_API_KEY`, `MEDICAL_AI_MODEL` | Optional | External extraction provider. Configure only after reviewing patient consent, data handling, and provider terms. |
@@ -76,13 +77,15 @@ The API service should be private behind the web app and the approved TLS proxy.
 
 ## Reverse proxy and client IP
 
-Set `TRUSTED_PROXY_COUNT` to the number of trusted proxies that append `X-Forwarded-For` before the request reaches the API. The API must not be directly reachable from untrusted clients when this is nonzero. With the supplied topology, the API trusts only the Next.js hop (`1`). If a load balancer sits in front of Next.js, ensure Next.js itself overwrites/appends the client chain safely; do not blindly increase the API trust count. With no verified proxy chain, set `TRUSTED_PROXY_COUNT=0` so socket peer IP is used. Request logs intentionally store request IDs and routes but never full IP addresses, credentials, tokens, or document contents.
+Set `TRUSTED_PROXY_COUNT` to the number of trusted proxies that append `X-Forwarded-For` before the request reaches the API. Production requires at least one verified hop, and the API must not be directly reachable from untrusted clients. With the supplied topology, the API trusts only the Next.js hop (`1`). If a load balancer sits in front of Next.js, ensure Next.js itself overwrites/appends the client chain safely; do not blindly increase the API trust count. Local direct development may use `TRUSTED_PROXY_COUNT=0` so the socket peer IP is used. Request logs intentionally store request IDs and routes but never full IP addresses, credentials, tokens, or document contents.
 
 ## Migrations
 
 Back up PostgreSQL before every schema change. Review the migration file, apply `alembic upgrade head` once before starting new replicas, and run `alembic check` in CI. Do not downgrade a production database as a routine rollback; deploy a forward fix or restore a verified backup into an isolated recovery environment first.
 
 ## Backups and restore test
+
+For the operator checklist, including coordinated database, document-volume, and key backups, see [the backup runbook](../scripts/backup.md).
 
 Back up PostgreSQL and the `document_data` volume together. A database-only snapshot is insufficient because document metadata refers to encrypted files in that volume. Quiesce writes or use a coordinated volume/database snapshot so the two copies describe the same point in time. Store backups and the corresponding encryption-key version separately under access control. Never place backup files in the web root or a public bucket.
 
