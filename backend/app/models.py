@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -276,6 +278,12 @@ class DocumentExtraction(Base):
     ocr_text: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
     candidates: Mapped[list[dict]] = mapped_column(EncryptedJSON(), default=list, nullable=False)
     engine_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    ai_consent: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    ai_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_provider: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ai_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )

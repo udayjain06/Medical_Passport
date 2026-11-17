@@ -22,6 +22,10 @@ type Extraction = {
   warnings?: string[];
   created_events?: number;
   skipped_duplicates?: number;
+  ai_consent?: boolean;
+  ai_consent_at?: string | null;
+  ai_provider?: string | null;
+  ai_processed_at?: string | null;
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -56,10 +60,15 @@ type Props = {
 
 export function ExtractionReview({ documentId, canEdit, processingStatus, onChanged }: Props) {
   const [extraction, setExtraction] = useState<Extraction | null>(null);
+  const [externalAiConfigured, setExternalAiConfigured] = useState(false);
+  const [aiConsent, setAiConsent] = useState({ documentId, checked: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    apiRequest<{ external_ai_configured: boolean }>("/auth/ai-capabilities")
+      .then((capabilities) => setExternalAiConfigured(capabilities.external_ai_configured))
+      .catch(() => setExternalAiConfigured(false));
     apiRequest<Extraction>(`/documents/${documentId}/extraction`)
       .then(setExtraction)
       .catch(() => setExtraction(null)); // no extraction yet
@@ -79,11 +88,15 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
 
   async function process() {
     const result = await run(
-      () => apiRequest<Extraction>(`/documents/${documentId}/process`, { method: "POST" }),
+      () => apiRequest<Extraction>(`/documents/${documentId}/process`, {
+        method: "POST",
+        body: JSON.stringify({ ai_consent: aiConsent.documentId === documentId && aiConsent.checked }),
+      }),
       "Processing failed. Retry.",
     );
     if (result) {
       setExtraction(result);
+      setAiConsent({ documentId, checked: false });
       onChanged();
     }
   }
@@ -192,6 +205,19 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
         Medical Passport reads the document and suggests facts. Nothing reaches your timeline or emergency
         card until you accept it.
       </p>
+      {externalAiConfigured && canEdit && extraction?.status !== "confirmed" && (
+        <label className="ai-consent">
+          <input
+            type="checkbox"
+            checked={aiConsent.documentId === documentId && aiConsent.checked}
+            onChange={(event) => setAiConsent({ documentId, checked: event.target.checked })}
+          />
+          <span>Allow this document’s OCR text to be processed by the configured AI provider for this run. Patient name and long number-like identifiers are removed first.</span>
+        </label>
+      )}
+      {extraction?.ai_provider && extraction.ai_processed_at && (
+        <p className="field-hint">External AI processing: {extraction.ai_provider} · {new Date(extraction.ai_processed_at).toLocaleString()} (sent after consent with identifiers redacted).</p>
+      )}
       {canEdit && extraction?.status !== "confirmed" && (
         <button className="button" disabled={busy} onClick={() => void process()}>
           {busy ? "Working…" : processingStatus === "failed" ? "Retry extraction" : extraction ? "Re-run extraction" : "Run OCR and extraction"}

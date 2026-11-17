@@ -13,7 +13,12 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.extraction import DocumentImageTooLargeError, extract_pages
-from app.medical_ai import ALLOWED_FIELDS, extract_candidates
+from app.medical_ai import (
+    ALLOWED_FIELDS,
+    extract_candidates,
+    provider_configured,
+    redact_for_provider,
+)
 from app.models import (
     AuditEvent,
     DocumentExtraction,
@@ -32,6 +37,10 @@ router = APIRouter(prefix="/api/documents", tags=["document extraction"])
 
 class ReviewPayload(BaseModel):
     candidates: list[dict] = Field(max_length=300)
+
+
+class ProcessPayload(BaseModel):
+    ai_consent: bool = False
 
 
 REVIEW_STATUSES = {"pending", "accepted", "rejected"}
@@ -59,6 +68,10 @@ def _serialize(extraction: DocumentExtraction, db: Session | None = None, **extr
         "ocr_text": extraction.ocr_text,
         "candidates": extraction.candidates,
         "engine_version": extraction.engine_version,
+        "ai_consent": extraction.ai_consent,
+        "ai_consent_at": extraction.ai_consent_at,
+        "ai_provider": extraction.ai_provider,
+        "ai_processed_at": extraction.ai_processed_at,
         "created_at": extraction.created_at,
         "updated_at": extraction.updated_at,
         "warnings": [],
@@ -102,6 +115,7 @@ def _get_extraction(db: Session, doc: MedicalDocument) -> DocumentExtraction:
 @router.post("/{document_id}/process")
 def process_document(
     document_id: uuid.UUID,
+    payload: ProcessPayload = ProcessPayload(),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     x_patient_profile: uuid.UUID | None = Header(None),
@@ -134,10 +148,20 @@ def process_document(
         extraction.status = "processing"
         extraction.updated_at = datetime.now(UTC)
     doc.processing_status = "processing"
+    use_ai = payload.ai_consent and provider_configured()
+    extraction.ai_consent = use_ai
+    extraction.ai_consent_at = datetime.now(UTC) if use_ai else None
     db.commit()
     try:
         pages = extract_pages(document_storage.read(doc.profile_id, doc.id), doc.file_format)
-        candidates, engine = extract_candidates(pages)
+        if use_ai:
+            patient = db.get(PatientProfile, doc.profile_id)
+            provider_pages = redact_for_provider(pages, patient.full_name if patient else None)
+            extraction.ai_provider = settings.medical_ai_model
+            extraction.ai_processed_at = datetime.now(UTC)
+            candidates, engine = extract_candidates(provider_pages)
+        else:
+            candidates, engine = extract_candidates(pages, allow_ai=False)
         extraction.candidates = [
             {**candidate, "candidate_id": candidate.get("candidate_id") or str(uuid.uuid4())}
             for candidate in candidates

@@ -30,7 +30,7 @@
 - Dependent profiles can be archived only by their owning account; the primary profile cannot be archived. Archival retains history, blocks further API selection, revokes active emergency shares, and removes sharing grants.
 - Timeline references include extraction/candidate IDs when known plus filename/checksum snapshots. Deleting a source document nulls the live foreign keys while retaining provenance. Timeline filters, edit/delete authorization, conflict groups, and uncertainty notes are server-enforced.
 - SQLite foreign-key enforcement is enabled on every SQLAlchemy SQLite connection and tested for valid, invalid, and cascading references.
-- Local OCR runs on the application server. If an AI endpoint, API key, and model are configured, OCR text is transmitted to that provider for structured candidate extraction. Configure only a provider approved for this health data; no AI provider is enabled by default.
+- Local OCR runs on the application server. A configured AI endpoint, API key, and model are required before the frontend offers a per-document, per-run consent checkbox. Without that explicit flag, the provider is not called and offline rules run. Before transmission, the patient's profile name and long number-like values are redacted; local OCR remains available to the patient. The extraction stores the consent flag/time and provider/model plus processing time. Configure only a provider approved for this health data; no AI provider is enabled by default.
 
 ## Limits and launch requirements
 

@@ -14,6 +14,14 @@
 - **Verification:** Ruff passed. Full backend suite passed: **79 passed**, with one existing Starlette/httpx deprecation warning. The first sandbox run could not create temporary document-upload directories; rerunning with approved local filesystem access passed. Frontend TypeScript/ESLint and isolated Alembic upgrade/drift checks are still pending before this task's commit.
 - **Limitations:** Legal text remains a placeholder requiring review; this is not a DPDP-compliance claim. Historical emergency shares are attributed to the profile owner during migration; new shares record their creating user.
 
+## 2026-11-17 — Final completion, Task 2: AI provider safety
+
+- **Implemented:** External AI capability is reported without exposing configuration secrets. The document review UI exposes a per-run consent checkbox only when endpoint, key, and model are all configured. API processing defaults to offline rules and will not call the provider without the explicit request flag. Before a consented call, the patient's profile name and number-like identifiers with 10 or more digits are redacted from copied OCR lines. The original OCR remains intact locally. Extraction rows record the consent flag/time and provider/model plus last provider-processing time.
+- **Files added:** Migration `backend/alembic/versions/ae7c2c3bd516_ai_provider_consent_metadata.py` and `backend/tests/test_ai_consent_safety.py`.
+- **Files changed:** `backend/app/models.py`, `backend/app/medical_ai.py`, `backend/app/routers/auth.py`, `backend/app/routers/extraction.py`, `frontend/src/components/extraction-review.tsx`, `frontend/src/app/globals.css`, `.env.example`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/SECURITY_PRIVACY.md`, and this log.
+- **Verification:** Backend Ruff format/check passed. Full backend suite passed: **82 passed**, with one Starlette/httpx deprecation warning. Frontend `npx tsc --noEmit` and `npx eslint src` passed. Fresh SQLite Alembic upgrade reached `ae7c2c3bd516`; `alembic check` reported no new operations. The test provider was a synthetic local double; no external AI service was contacted.
+- **Limitations:** Provider configuration is all-or-nothing across endpoint, API key, and model. Redaction covers the patient's stored full name and number-like sequences; other identifying content in document text is not automatically removed.
+
 ## 2026-11-04 — Phase 0 and Phase 1 foundation
 
 - **Features implemented:** Initialized a Next.js 16/React 19/TypeScript frontend; added a FastAPI service foundation, environment configuration, SQLAlchemy models and Alembic migration, health checks, registration/login/logout with HttpOnly session cookies and Argon2 password hashing, protected patient APIs, rate limiting, audit events, and a patient-entered profile workflow. (Work is in progress until checks below are completed.)

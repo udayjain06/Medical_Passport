@@ -21,6 +21,7 @@ from app.email import (
     provide_email_provider,
     take_test_email_link,
 )
+from app.medical_ai import provider_configured
 from app.models import (
     AuditEvent,
     ConsentRecord,
@@ -39,6 +40,11 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 logger = logging.getLogger(__name__)
 _DUMMY_HASH = hash_password("not-a-real-user-password")
 CONSENT_VERSION = "v1"
+
+
+@router.get("/ai-capabilities")
+def ai_capabilities(user: User = Depends(get_current_user)) -> dict[str, bool]:
+    return {"external_ai_configured": provider_configured()}
 
 
 def _rate_limit(request: Request, action: str) -> None:
