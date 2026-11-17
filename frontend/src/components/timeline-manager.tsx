@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiRequest } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 type Event = {
   id: string;
@@ -38,6 +39,7 @@ const categories = ["Consultation", "Diagnosis", "Prescription", "Lab test", "Su
 const emptyDraft: Draft = { title: "", category: "Medical observation", event_date: "", summary: "", verification_status: "patient_entered", conflict_group: "", uncertainty_note: "" };
 
 export default function TimelineManager() {
+  const { language, t } = useLanguage();
   const [events, setEvents] = useState<Event[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [canEdit, setCanEdit] = useState(true);
@@ -52,6 +54,10 @@ export default function TimelineManager() {
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const categoryLabel = (value: string) => language === "hi" ? ({
+    Consultation: "परामर्श", Diagnosis: "निदान", Prescription: "नुस्खा", "Lab test": "लैब जाँच", Surgery: "शल्यक्रिया", Admission: "प्रवेश", Discharge: "छुट्टी", Allergy: "एलर्जी", Vaccination: "टीकाकरण", "Medical observation": "चिकित्सा अवलोकन", "Follow-up": "अनुवर्ती जाँच",
+  } as Record<string, string>)[value] ?? value : value;
+  const statusLabel = (value: string) => language === "hi" ? ({ patient_entered: "रोगी द्वारा दर्ज", confirmed: "पुष्टि की गई", uncertain: "अनिश्चित", conflict: "विरोधी" } as Record<string, string>)[value] ?? value : value.replaceAll("_", " ");
 
   const load = useCallback(async () => {
     const query = new URLSearchParams({ sort });
@@ -135,41 +141,41 @@ export default function TimelineManager() {
   }
 
   return <main className="page-wrap">
-    <header className="page-heading"><p className="eyebrow">Source-linked history</p><h1>Medical timeline</h1><p>Patient-confirmed facts from records and entries you add yourself. Mark uncertain or conflicting history so it stays visible for review.</p></header>
+    <header className="page-heading"><p className="eyebrow">{t("timelineEyebrow")}</p><h1>{t("timelineTitle")}</h1><p>{t("timelineIntro")}</p></header>
     {canEdit ? <section className="panel">
-      <h2>{editing ? "Edit timeline event" : "Add a patient-entered event"}</h2>
+      <h2>{editing ? t("editTimeline") : t("addPatientEvent")}</h2>
       <form className="form-grid" onSubmit={(event) => void save(event)}>
-        <label className="field">Event title<input required maxLength={200} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
-        <label className="field">Category<select aria-label="Event category" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="field">Event date<input type="date" value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} /></label>
-        <label className="field">Note<textarea maxLength={5000} value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} /></label>
-        <label className="field">Review status<select aria-label="Event review status" value={draft.verification_status} onChange={(event) => setDraft({ ...draft, verification_status: event.target.value })}><option value="patient_entered">Patient entered</option><option value="confirmed">Confirmed</option><option value="uncertain">Uncertain</option><option value="conflict">Conflicting information</option></select></label>
+        <label className="field">{t("eventTitle")}<input required maxLength={200} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+        <label className="field">{t("category")}<select aria-label={t("category")} value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>{categories.map((item) => <option key={item} value={item}>{categoryLabel(item)}</option>)}</select></label>
+        <label className="field">{t("eventDate")}<input type="date" value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} /></label>
+        <label className="field">{t("note")}<textarea maxLength={5000} value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} /></label>
+        <label className="field">{t("reviewStatus")}<select aria-label={t("reviewStatus")} value={draft.verification_status} onChange={(event) => setDraft({ ...draft, verification_status: event.target.value })}><option value="patient_entered">{t("patientEntered")}</option><option value="confirmed">{t("confirmed")}</option><option value="uncertain">{t("uncertain")}</option><option value="conflict">{t("conflicting")}</option></select></label>
         {draft.verification_status === "conflict" && <label className="field">Conflict group<input required maxLength={80} placeholder="For example: medication-dose-review" value={draft.conflict_group} onChange={(event) => setDraft({ ...draft, conflict_group: event.target.value })} /></label>}
         {draft.verification_status === "uncertain" && <label className="field">Why is this uncertain?<textarea required maxLength={1000} value={draft.uncertainty_note} onChange={(event) => setDraft({ ...draft, uncertainty_note: event.target.value })} /></label>}
-        <div className="form-actions"><button className="button">{editing ? "Save changes" : "Add event"}</button>{editing && <button type="button" className="button button-secondary" onClick={() => { setEditing(null); setDraft(emptyDraft); }}>Cancel edit</button>}</div>
+        <div className="form-actions"><button className="button">{editing ? t("saveChanges") : t("addEvent")}</button>{editing && <button type="button" className="button button-secondary" onClick={() => { setEditing(null); setDraft(emptyDraft); }}>{t("cancelEdit")}</button>}</div>
       </form>
-    </section> : <p className="verification-note">This profile is read-only for your account. You can review its timeline entries.</p>}
+  </section> : <p className="verification-note">{language === "hi" ? "यह प्रोफ़ाइल आपके खाते के लिए केवल-पठन है। आप इसकी समयरेखा देख सकते हैं।" : "This profile is read-only for your account. You can review its timeline entries."}</p>}
     <section className="panel" aria-label="Timeline filters">
-      <h2>Find events</h2>
+      <h2>{t("findEvents")}</h2>
       <div className="timeline-tools">
-        <input aria-label="Search timeline" placeholder="Search title or note" value={search} onChange={(event) => setSearch(event.target.value)} />
-        <select aria-label="Filter category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{categories.map((item) => <option key={item}>{item}</option>)}</select>
-        <select aria-label="Filter source document" value={source} onChange={(event) => setSource(event.target.value)}><option value="">All sources</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.original_filename}</option>)}</select>
-        <label>From<input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
-        <label>Through<input aria-label="Date through" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
-        <select aria-label="Filter review status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All review states</option><option value="patient_entered">Patient entered</option><option value="confirmed">Confirmed</option><option value="uncertain">Uncertain</option><option value="conflict">Conflict</option></select>
-        <select aria-label="Sort timeline" value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select>
+        <input aria-label={t("timelineTitle")} placeholder={t("searchTimeline")} value={search} onChange={(event) => setSearch(event.target.value)} />
+        <select aria-label={t("category")} value={category} onChange={(event) => setCategory(event.target.value)}><option value="">{t("allCategories")}</option>{categories.map((item) => <option key={item} value={item}>{categoryLabel(item)}</option>)}</select>
+        <select aria-label={t("allSources")} value={source} onChange={(event) => setSource(event.target.value)}><option value="">{t("allSources")}</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.original_filename}</option>)}</select>
+        <label>{t("from")}<input aria-label={t("from")} type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+        <label>{t("through")}<input aria-label={t("through")} type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+        <select aria-label={t("reviewStatus")} value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{t("allReviewStates")}</option><option value="patient_entered">{t("patientEntered")}</option><option value="confirmed">{t("confirmed")}</option><option value="uncertain">{t("uncertain")}</option><option value="conflict">{t("conflict")}</option></select>
+        <select aria-label={t("timelineTitle")} value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">{t("newest")}</option><option value="oldest">{t("oldest")}</option></select>
       </div>
     </section>
     {error && <p className="form-error" role="alert">{error}<button className="button button-secondary button-small" onClick={() => void load()}>Retry</button></p>}
     {success && <p className="form-success" role="status">{success}</p>}
-    {events.length === 0 ? <div className="empty-state"><strong>No timeline entries match these filters</strong><p>Confirm reviewed extraction candidates or add an event.</p></div> : <div className="timeline-list">{events.map((item) => <article className="timeline-item" key={item.id}>
-      <time>{item.event_date || "Date not recorded"}</time><div><h2>{item.title}</h2><p>{item.summary}</p><span className="status-pill">{item.verification_status.replaceAll("_", " ")}</span>
+    {events.length === 0 ? <div className="empty-state"><strong>{t("noTimelineMatches")}</strong><p>{t("confirmReviewed")}</p></div> : <div className="timeline-list">{events.map((item) => <article className="timeline-item" key={item.id}>
+      <time>{item.event_date || (language === "hi" ? "तारीख दर्ज नहीं" : "Date not recorded")}</time><div><h2>{item.title}</h2><p>{item.summary}</p><span className="status-pill">{statusLabel(item.verification_status)}</span>
         {item.uncertainty_note && <p>Uncertainty: {item.uncertainty_note}</p>}{item.conflict_group && <p>Conflict group: {item.conflict_group}</p>}
         {item.source_document_id && <p><Link href={`/documents?document=${item.source_document_id}`}>Open source document{item.source_page ? ` · page ${item.source_page}` : ""}</Link></p>}
         {!item.source_document_id && item.source_document_filename && <p>Source retained after document removal: {item.source_document_filename}{item.source_document_checksum ? ` · SHA-256 ${item.source_document_checksum}` : ""}</p>}
         {item.source_extraction_id && <p>Extraction run {item.source_extraction_id}; candidate {item.source_candidate_id}</p>}
-        {item.can_edit && <div className="form-actions"><button className="button button-secondary button-small" onClick={() => beginEdit(item)}>Edit</button><button className="button button-secondary button-small" onClick={() => void remove(item)}>Delete</button></div>}
+        {item.can_edit && <div className="form-actions"><button className="button button-secondary button-small" onClick={() => beginEdit(item)}>{t("edit")}</button><button className="button button-secondary button-small" onClick={() => void remove(item)}>{t("delete")}</button></div>}
       </div></article>)}</div>}
   </main>;
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useState, useSyncExternalStore } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 
 type Props = { mode: "login" | "signup" };
 type User = { id: string; email: string };
@@ -24,6 +25,7 @@ export function AuthForm({ mode }: Props) {
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { language, t } = useLanguage();
   const hydrated = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydrationSnapshot);
   const signup = mode === "signup";
 
@@ -59,27 +61,28 @@ export function AuthForm({ mode }: Props) {
     <main className="auth-wrap">
       <section className="auth-card" aria-labelledby="form-title">
         <p className="eyebrow">Medical Passport</p>
-        <h1 id="form-title">{signup ? "Create your account" : "Welcome back"}</h1>
-        <p>{signup ? "Begin with a private, patient-reported health profile." : "Log in to continue to your health profile."}</p>
+        <LanguageSwitcher />
+        <h1 id="form-title">{signup ? t("signupTitle") : t("loginTitle")}</h1>
+        <p>{signup ? t("signupIntro") : t("loginIntro")}</p>
         <form className="form-grid" method="post" onSubmit={submit}>
-          {signup && <div className="field"><label htmlFor="full-name">Full name</label><input id="full-name" name="full_name" autoComplete="name" required maxLength={120} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>}
-          <div className="field"><label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></div>
-          <div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{signup && <span className="field-hint">Use at least 12 characters.</span>}</div>
+          {signup && <div className="field"><label htmlFor="full-name">{t("fullName")}</label><input id="full-name" name="full_name" autoComplete="name" required maxLength={120} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>}
+          <div className="field"><label htmlFor="email">{t("emailAddress")}</label><input id="email" name="email" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+          <div className="field"><label htmlFor="password">{t("password")}</label><input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{signup && <span className="field-hint">{t("passwordHint")}</span>}</div>
           {signup && <div className="signup-consents">
             <label className="signup-consent" htmlFor="terms-accepted">
               <input id="terms-accepted" name="terms_accepted" type="checkbox" required checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
-              <span>I agree to the <Link href="/terms">Terms</Link>.</span>
+              <span>{language === "hi" ? "मैं सेवा की " : "I agree to the "}<Link href="/terms">{t("terms")}</Link>{language === "hi" ? " से सहमत हूँ।" : "."}</span>
             </label>
             <label className="signup-consent" htmlFor="privacy-acknowledged">
               <input id="privacy-acknowledged" name="privacy_acknowledged" type="checkbox" required checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
-              <span>I acknowledge the <Link href="/privacy">Privacy notice</Link>.</span>
+              <span>{language === "hi" ? "मैं " : "I acknowledge the "}<Link href="/privacy">{t("privacyNotice")}</Link>{language === "hi" ? " को स्वीकार करता/करती हूँ।" : "."}</span>
             </label>
           </div>}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button" type="submit" disabled={!hydrated || busy}>{busy ? "Please wait…" : signup ? "Create account" : "Log in"}</button>
+          <button className="button" type="submit" disabled={!hydrated || busy}>{busy ? t("wait") : signup ? t("createAccount") : t("login")}</button>
         </form>
-        {!signup && <p className="form-footnote"><Link href="/forgot-password">Forgot your password?</Link></p>}
-        <p className="form-footnote">{signup ? "Already registered? " : "New to Medical Passport? "}<Link href={signup ? "/login" : "/signup"}>{signup ? "Log in" : "Create an account"}</Link></p>
+        {!signup && <p className="form-footnote"><Link href="/forgot-password">{t("forgotPassword")}</Link></p>}
+        <p className="form-footnote"><Link href={signup ? "/login" : "/signup"}>{signup ? t("loginLink") : t("signupLink")}</Link></p>
       </section>
     </main>
   );

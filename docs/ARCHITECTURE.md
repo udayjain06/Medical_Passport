@@ -37,6 +37,7 @@ The frontend does not hold session tokens in JavaScript. FastAPI validates every
 - `frontend/src/app/`: landing, login, registration, dashboard, and profile routes.
 - `frontend/src/lib/api.ts`: typed same-origin API client.
 - `frontend/src/lib/session.ts`: server-side session validation for protected routes.
+- `frontend/src/lib/i18n.tsx`: small English/Hindi dictionary and a client-set `mp_language` cookie; the root layout uses it for `<html lang>`.
 
 ## Data flow and boundaries
 
@@ -59,6 +60,8 @@ Emergency share metadata includes an optional label and access-log rows; renewin
 Dependent profiles are archived rather than deleted. Archival keeps profile and medical history rows, prevents further selection through the API, revokes active emergency shares, and removes family grants. Archived records need an explicit future recovery workflow before users can access them again.
 
 The frontend build uses Next.js 16's `experimental.cpus: 1` setting because parallel static prerendering intermittently failed to create route-segment directories on the Windows development filesystem. This trades build speed for repeatable local builds; reassess on the production build environment.
+
+The currently installed RapidOCR runtime ships with its default PP-OCR recognition assets and exposes no Hindi script model switch through configuration alone. The UI and transliterated-label rule extraction support Hindi; Hindi-script OCR remains unsupported until a compatible OCR model is deliberately added and validated.
 
 ## Planned adapters
 

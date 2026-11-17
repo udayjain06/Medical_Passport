@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 type Candidate = {
   candidate_id?: string;
@@ -30,6 +31,7 @@ type Extraction = {
 
 const FIELD_LABELS: Record<string, string> = {
   patient_name: "Patient name",
+  age: "Age",
   doctor_name: "Doctor",
   hospital_name: "Hospital / lab",
   document_date: "Document date",
@@ -44,7 +46,7 @@ const FIELD_LABELS: Record<string, string> = {
   follow_up_date: "Follow-up date",
   source_text: "Unstructured text",
 };
-const DETAIL_FIELDS = new Set(["patient_name", "doctor_name", "hospital_name", "document_date"]);
+const DETAIL_FIELDS = new Set(["patient_name", "age", "doctor_name", "hospital_name", "document_date"]);
 const LOW_CONFIDENCE = 0.6;
 const TIMELINE_FIELDS = new Set([
   "diagnosis", "condition", "allergy", "medication", "procedure", "lab_test",
@@ -59,6 +61,7 @@ type Props = {
 };
 
 export function ExtractionReview({ documentId, canEdit, processingStatus, onChanged }: Props) {
+  const { language, t } = useLanguage();
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [externalAiConfigured, setExternalAiConfigured] = useState(false);
   const [aiConsent, setAiConsent] = useState({ documentId, checked: false });
@@ -155,23 +158,35 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
   const details = extraction?.candidates.map((c, i) => ({ c, i })).filter(({ c }) => DETAIL_FIELDS.has(c.field)) ?? [];
   const facts = extraction?.candidates.map((c, i) => ({ c, i })).filter(({ c }) => !DETAIL_FIELDS.has(c.field)) ?? [];
 
+  const fieldLabel = (field: string) => {
+    if (language === "hi") {
+      const hindiLabels: Record<string, string> = {
+        patient_name: "रोगी का नाम", age: "आयु", doctor_name: "चिकित्सक", hospital_name: "अस्पताल / लैब", document_date: "दस्तावेज़ की तारीख",
+        diagnosis: "निदान", condition: "स्थिति", allergy: "एलर्जी", medication: "दवा", procedure: "प्रक्रिया", lab_test: "जाँच परिणाम",
+        admission_date: "प्रवेश की तारीख", discharge_date: "छुट्टी की तारीख", follow_up_date: "अनुवर्ती जाँच", source_text: "असंरचित पाठ",
+      };
+      return hindiLabels[field] ?? field;
+    }
+    return FIELD_LABELS[field] ?? field;
+  };
+
   const renderRow = ({ c, i }: { c: Candidate; i: number }) => (
     <div className={`candidate candidate-${c.review_status}`} key={c.candidate_id ?? i}>
       <div className="candidate-head">
-        <strong>{FIELD_LABELS[c.field] ?? c.field}</strong>
+        <strong>{fieldLabel(c.field)}</strong>
         <span className={c.confidence < LOW_CONFIDENCE ? "badge badge-warn" : "badge"}>
           {Math.round(c.confidence * 100)}% · page {c.source_page ?? "?"}
         </span>
       </div>
       <textarea
-        aria-label={`${FIELD_LABELS[c.field] ?? c.field} text`}
+        aria-label={`${fieldLabel(c.field)} ${language === "hi" ? "का पाठ" : "text"}`}
         disabled={!canEdit || !open}
         value={c.value}
         rows={2}
         onChange={(e) => update(i, { value: e.target.value })}
       />
       {c.confidence < LOW_CONFIDENCE && open && (
-        <p className="field-hint">Low confidence. Compare with the original before accepting.</p>
+        <p className="field-hint">{t("lowConfidence")}</p>
       )}
       {canEdit && open ? (
         <div className="review-actions">
@@ -181,7 +196,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
             aria-pressed={c.review_status === "accepted"}
             onClick={() => update(i, { review_status: c.review_status === "accepted" ? "pending" : "accepted" })}
           >
-            {c.review_status === "accepted" ? "Accepted" : "Accept"}
+            {c.review_status === "accepted" ? t("accepted") : t("accept")}
           </button>
           <button
             type="button"
@@ -189,7 +204,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
             aria-pressed={c.review_status === "rejected"}
             onClick={() => update(i, { review_status: c.review_status === "rejected" ? "pending" : "rejected" })}
           >
-            {c.review_status === "rejected" ? "Rejected" : "Reject"}
+            {c.review_status === "rejected" ? t("rejected") : t("reject")}
           </button>
         </div>
       ) : (
@@ -200,11 +215,8 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
 
   return (
     <section className="review-box">
-      <h3>Text extraction and review</h3>
-      <p>
-        Medical Passport reads the document and suggests facts. Nothing reaches your timeline or emergency
-        card until you accept it.
-      </p>
+      <h3>{t("extractionTitle")}</h3>
+      <p>{t("extractionIntro")}</p>
       {externalAiConfigured && canEdit && extraction?.status !== "confirmed" && (
         <label className="ai-consent">
           <input
@@ -212,15 +224,15 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
             checked={aiConsent.documentId === documentId && aiConsent.checked}
             onChange={(event) => setAiConsent({ documentId, checked: event.target.checked })}
           />
-          <span>Allow this document’s OCR text to be processed by the configured AI provider for this run. Patient name and long number-like identifiers are removed first.</span>
+          <span>{t("aiConsent")}</span>
         </label>
       )}
       {extraction?.ai_provider && extraction.ai_processed_at && (
-        <p className="field-hint">External AI processing: {extraction.ai_provider} · {new Date(extraction.ai_processed_at).toLocaleString()} (sent after consent with identifiers redacted).</p>
+        <p className="field-hint">{language === "hi" ? "बाहरी AI संसाधन" : "External AI processing"}: {extraction.ai_provider} · {new Date(extraction.ai_processed_at).toLocaleString()} ({language === "hi" ? "सहमति के बाद पहचान विवरण हटाकर भेजा गया" : "sent after consent with identifiers redacted"}).</p>
       )}
       {canEdit && extraction?.status !== "confirmed" && (
         <button className="button" disabled={busy} onClick={() => void process()}>
-          {busy ? "Working…" : processingStatus === "failed" ? "Retry extraction" : extraction ? "Re-run extraction" : "Run OCR and extraction"}
+          {busy ? t("working") : processingStatus === "failed" ? t("retryExtraction") : extraction ? t("rerunExtraction") : t("processDocument")}
         </button>
       )}
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -230,7 +242,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
       {extraction && (
         <>
           <p>
-            Status: <strong>{extraction.status.replace("_", " ")}</strong> · engine: {extraction.engine_version}
+            {language === "hi" ? "स्थिति" : "Status"}: <strong>{extraction.status.replace("_", " ")}</strong> · engine: {extraction.engine_version}
           </p>
           {extraction.status === "confirmed" && extraction.created_events !== undefined && (
             <p role="status">
@@ -238,11 +250,11 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
               {extraction.skipped_duplicates ? `, ${extraction.skipped_duplicates} skipped as already recorded` : ""}.
             </p>
           )}
-          {details.length > 0 && <h4>Document details</h4>}
+          {details.length > 0 && <h4>{t("documentDetails")}</h4>}
           {details.map(renderRow)}
-          {facts.length > 0 && <h4>Medical facts</h4>}
+          {facts.length > 0 && <h4>{t("medicalFacts")}</h4>}
           {facts.map(renderRow)}
-          {extraction.candidates.length === 0 && <p>No readable text was found. Try a clearer photo or scan.</p>}
+          {extraction.candidates.length === 0 && <p>{t("noReadableText")}</p>}
           {extraction.ocr_text && (
             <details>
               <summary>OCR source text</summary>
@@ -251,15 +263,9 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
           )}
           {canEdit && open && (
             <div className="review-actions">
-              <button className="button button-secondary" type="button" onClick={acceptConfident}>
-                Accept all 80%+ matches
-              </button>
-              <button className="button" disabled={busy || accepted === 0} onClick={() => void confirm()}>
-                Add {accepted} accepted to timeline
-              </button>
-              <button className="button button-secondary" disabled={busy} onClick={() => void reject()}>
-                Discard suggestions
-              </button>
+              <button className="button button-secondary" type="button" onClick={acceptConfident}>{t("acceptConfident")}</button>
+              <button className="button" disabled={busy || accepted === 0} onClick={() => void confirm()}>{language === "hi" ? `स्वीकृत ${accepted} तथ्य समयरेखा में जोड़ें` : `Add ${accepted} accepted to timeline`}</button>
+              <button className="button button-secondary" disabled={busy} onClick={() => void reject()}>{t("discardSuggestions")}</button>
             </div>
           )}
         </>

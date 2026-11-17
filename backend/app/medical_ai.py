@@ -13,6 +13,7 @@ from app.structured_extraction import extract_structured
 ALLOWED_FIELDS = {
     "source_text",
     "patient_name",
+    "age",
     "document_date",
     "doctor_name",
     "hospital_name",
