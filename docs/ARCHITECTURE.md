@@ -28,7 +28,7 @@ The frontend does not hold session tokens in JavaScript. FastAPI validates every
 - `backend/app/routers/documents.py`: authenticated upload, list/search/filter, details, content retrieval, metadata updates and deletion.
 - `backend/app/extraction.py`, `structured_extraction.py`, and `medical_ai.py`: local OCR plus deterministic rule extraction; an optional compatible AI provider is called only after per-document consent and receives name/number-redacted OCR. Provider outages fall back to rules. Suggestions require item-by-item patient review.
 - `backend/app/profile_access.py`: server-side profile selection and owner/caregiver/editor/viewer authorization.
-- `backend/app/routers/{extraction,timeline,emergency,family,abha}.py`: review, source-linked events with category/source/date/state filters and edit/delete, emergency shares, account access grants and dependent archival, and ABHA status.
+- `backend/app/routers/{extraction,timeline,emergency,family,abha,export}.py`: review, source-linked events with category/source/date/state filters and edit/delete, emergency shares, account access grants and dependent archival, ABHA status, and a FHIR R4-aligned export.
 - `backend/alembic/`: migrations.
 - `backend/tests/`: API and isolation tests using a disposable SQLite database.
 
@@ -65,4 +65,4 @@ The currently installed RapidOCR runtime ships with its default PP-OCR recogniti
 
 ## Planned adapters
 
-ABDM real calls and FHIR exchange remain disabled until official onboarding, specifications, credentials, consent workflows, and validation are available. OCR and candidate review are implemented; no clinical recommendations are generated.
+The `/api/export/fhir` route emits a plain-dictionary FHIR R4-aligned Bundle from the active profile and supported timeline events that are patient-confirmed and have no unresolved conflict or uncertainty. Resource metadata extensions link each event to its timeline record and preserve available source filename/checksum provenance. Documents are not embedded. The export is not an ABDM/NHCX profile implementation or conformance claim. The ABHA connector remains disabled until official onboarding, specifications, credentials, consent workflows, and validation are available. OCR and candidate review are implemented; no clinical recommendations are generated.

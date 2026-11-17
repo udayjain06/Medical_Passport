@@ -15,6 +15,7 @@ from app.routers import (
     auth,
     documents,
     emergency,
+    export,
     extraction,
     family,
     health,
@@ -117,6 +118,7 @@ app.include_router(profile.router)
 app.include_router(documents.router)
 app.include_router(extraction.router)
 app.include_router(emergency.router)
+app.include_router(export.router)
 app.include_router(timeline.router)
 app.include_router(family.router)
 app.include_router(abha.router)

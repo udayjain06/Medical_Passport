@@ -73,6 +73,29 @@ export default function AccountData() {
     }
   }
 
+  async function exportFhir() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await apiRequest<unknown>("/export/fhir");
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/fhir+json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "medical-passport-fhir-r4-aligned.json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "FHIR export failed. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteAccount() {
     setBusy(true);
     setError("");
@@ -97,6 +120,9 @@ export default function AccountData() {
         <h2>{t("exportMyData")}</h2>
         <p>{t("exportIntro")}</p>
         <button className="button" disabled={busy} onClick={() => void exportData()}>{t("downloadExport")}</button>
+        <h3>{t("fhirR4Export")}</h3>
+        <p>{language === "hi" ? "डाउनलोड में केवल पुष्टि की गई, विरोध या अनिश्चितता से मुक्त समयरेखा घटनाएँ और उनके स्रोत संदर्भ शामिल होते हैं। यह FHIR R4-अनुरूप है; ABDM/NHCX प्रोफ़ाइल अनुपालन का दावा नहीं है।" : "The download contains only confirmed timeline events without conflict or uncertainty, with source provenance. It is FHIR R4-aligned; no ABDM/NHCX profile conformance is claimed."}</p>
+        <button className="button button-secondary" disabled={busy} onClick={() => void exportFhir()}>{t("downloadFhir")}</button>
       </section>
       <section className="panel" style={{ marginTop: 20 }} aria-labelledby="consent-heading">
         <h2 id="consent-heading">{t("myConsents")}</h2>
