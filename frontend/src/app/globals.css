@@ -201,6 +201,18 @@ a.button:active,button.button:active{transform:scale(.97)}
   }
 }
 
+.text-button {
+  color: var(--teal-dark);
+}
+
+.document-image-preview {
+  object-fit: contain;
+}
+
+:root {
+  --muted: #5b706c;
+}
+
 @media (forced-colors: active) {
   .verification-banner {
     border: 1px solid CanvasText;
@@ -272,9 +284,90 @@ a.button:active,button.button:active{transform:scale(.97)}
   border-radius: 7px;
 }
 
+.first-run-panel {
+  margin-top: 18px;
+}
+
+.first-run-panel > p {
+  margin: 8px 0 0;
+}
+
+.first-run-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.first-run-list li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.first-run-number {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid #6b7f76;
+  border-radius: 50%;
+  color: #30453d;
+  font-weight: 700;
+}
+
+.first-run-number.is-done {
+  border-color: #145b42;
+  color: #fff;
+  background: #145b42;
+}
+
+.first-run-list h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.first-run-list p {
+  margin: 3px 0 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.first-run-status {
+  color: #58655f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.first-run-status.is-done {
+  color: #145b42;
+}
+
+.dashboard-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 @media (max-width: 600px) {
   .offline-field-list {
     grid-template-columns: 1fr;
+  }
+
+  .first-run-list li {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .first-run-list .button {
+    grid-column: 2;
+    justify-self: start;
   }
 }
 
@@ -283,5 +376,11 @@ a.button:active,button.button:active{transform:scale(.97)}
     border: 2px solid currentColor;
     color: CanvasText;
     background: Canvas;
+  }
+
+  .first-run-list li,
+  .first-run-number {
+    border-width: 2px;
+    border-color: currentColor;
   }
 }

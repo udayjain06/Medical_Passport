@@ -55,23 +55,36 @@ export default function Emergency() {
   const [label, setLabel] = useState("");
   const [consent, setConsent] = useState(false);
   const [shares, setShares] = useState<Share[]>([]);
+  const [loadingShares, setLoadingShares] = useState(true);
   const [created, setCreated] = useState<Created | null>(null);
   const [logs, setLogs] = useState<Record<string, AccessEntry[]>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    setLoadingShares(true);
     try {
       setShares(await apiRequest<Share[]>("/emergency/shares"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load links");
+    } finally {
+      setLoadingShares(false);
     }
   }, []);
 
   useEffect(() => {
+    let active = true;
     apiRequest<Share[]>("/emergency/shares")
-      .then(setShares)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load links"));
+      .then((items) => {
+        if (active) setShares(items);
+      })
+      .catch((caught: unknown) => {
+        if (active) setError(caught instanceof Error ? caught.message : "Could not load links");
+      })
+      .finally(() => {
+        if (active) setLoadingShares(false);
+      });
+    return () => { active = false; };
   }, []);
 
   async function guarded(task: () => Promise<void>, fallback: string) {
@@ -197,8 +210,15 @@ export default function Emergency() {
 
       <section className="panel share-list">
         <h2>{t("activePreviousLinks")}</h2>
-        {shares.length === 0 ? (
-          <p>{t("noEmergencyLinks")}</p>
+        {loadingShares ? (
+          <p role="status">{t("loadingEmergencyLinks")}</p>
+        ) : shares.length === 0 ? (
+          error ? (
+            <div className="empty-state">
+              <strong>{language === "hi" ? "लिंक लोड नहीं हो सके" : "Emergency links could not be loaded"}</strong>
+              <button type="button" className="button button-secondary button-small" onClick={() => void load()}>{t("retry")}</button>
+            </div>
+          ) : <p>{t("noEmergencyLinks")}</p>
         ) : (
           shares.map((s) => {
             const active = !s.revoked && new Date(s.expires_at) > new Date();

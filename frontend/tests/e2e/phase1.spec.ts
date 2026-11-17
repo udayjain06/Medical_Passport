@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -11,6 +12,20 @@ async function getTestEmailLink(page: Page, purpose: "email_verification" | "pas
   expect(result.body.url).toBeTruthy();
   const link = new URL(result.body.url!);
   return `${link.pathname}${link.search}`;
+}
+
+async function expectAccessible(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    results.violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      description: violation.description,
+      nodes: violation.nodes.map((node) => ({ target: node.target, html: node.html, failureSummary: node.failureSummary })),
+    })),
+  ).toEqual([]);
 }
 
 test("registration, protected profile, persistence, logout, and login", async ({ page }) => {
@@ -59,11 +74,33 @@ test("registration, protected profile, persistence, logout, and login", async ({
 
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login$/);
+  await expectAccessible(page);
+  await page.getByLabel("Email address").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Password")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Log in" })).toBeFocused();
   await page.screenshot({ path: path.join(screenshotDir, "login.png"), fullPage: true });
 
   const email = `patient-${Date.now()}@example.com`;
   const password = "Safe-demo-passphrase-42";
   await page.goto("/signup");
+  await expectAccessible(page);
+  await page.getByLabel("Full name").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Email address")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Password")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("I agree to the Terms.")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Terms" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("I acknowledge the Privacy notice.")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Privacy notice" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Create account" })).toBeFocused();
   await page.getByLabel("Full name").fill("Test Patient");
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password").fill(password);
@@ -77,6 +114,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
   expect(new URL(page.url()).search).toBe("");
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Welcome, Test Patient" })).toBeVisible();
+  await expect(page.locator(".first-run-list li")).toHaveCount(4);
+  await expect(page.locator(".first-run-status")).toHaveText(["Not started", "Not started", "Not started", "Not started"]);
   await page.screenshot({ path: path.join(screenshotDir, "dashboard.png"), fullPage: true });
 
   const verificationPath = await getTestEmailLink(page, "email_verification");
@@ -133,7 +172,9 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText(email)).toBeVisible();
 
-  await page.getByRole("link", { name: "Documents" }).click();
+  await page.getByRole("navigation", { name: "Account navigation" }).getByRole("link", { name: "Documents" }).click();
+  await expect(page.getByRole("heading", { name: "Your documents" })).toBeVisible();
+  await expectAccessible(page);
   const fixture = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF");
   await page.locator('input[type="file"]').setInputFiles({
     name: "synthetic-lab-report.pdf",
@@ -155,6 +196,13 @@ test("registration, protected profile, persistence, logout, and login", async ({
   }
   await page.mouse.up();
   await expect(page.getByRole("dialog", { name: "Document details" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
+  const sheetControls = page.locator(".document-sheet button:not(:disabled), .document-sheet a[href], .document-sheet input:not(:disabled), .document-sheet select:not(:disabled), .document-sheet textarea:not(:disabled), .document-sheet [tabindex='0']");
+  const lastSheetControl = sheetControls.last();
+  await page.keyboard.press("Shift+Tab");
+  await expect(lastSheetControl).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
   await expect(page.locator(".document-sheet")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)", { timeout: 5000 });
   const glassSurface = await page.locator(".account-header").evaluate((element) => ({
     filter: getComputedStyle(element).backdropFilter,
@@ -171,6 +219,10 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.mouse.move(dragHandleBox!.x + dragHandleBox!.width / 2, dragHandleBox!.y + 170, { steps: 6 });
   await page.mouse.up();
   await expect(page.getByRole("dialog", { name: "Document details" })).toHaveCount(0, { timeout: 5000 });
+  await page.getByRole("button", { name: "Details" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Document details" })).toHaveCount(0, { timeout: 5000 });
+  await expect(page.getByRole("button", { name: "Details" })).toBeFocused();
   await page.getByRole("button", { name: "Details" }).click();
   await expect(page.getByTitle("Preview synthetic-lab-report.pdf")).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -189,6 +241,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByRole("button", { name: "Run OCR and extraction" }).click();
   await expect(page.getByText("needs review")).toBeVisible({ timeout: 60000 });
   await expect(page.locator(".review-box textarea").first()).toHaveValue(/Synthetic Lab Report/);
+  await expectAccessible(page);
   // Nothing can be confirmed until the patient accepts at least one suggestion.
   await expect(page.getByRole("button", { name: /Add 0 accepted/ })).toBeDisabled();
   const timelineCandidate = page.locator(".candidate").filter({
@@ -235,6 +288,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await reviewStatusFilter.selectOption("");
 
   await page.goto("/emergency");
+  await expect(page.getByLabel("Set an offline PIN (8 or more digits)")).toBeVisible();
+  await expectAccessible(page);
   const offlineFields = page.getByRole("group", { name: "Choose fields for the offline card" });
   await offlineFields.getByLabel("Patient name").check();
   await offlineFields.getByLabel("Blood group").check();
@@ -336,6 +391,10 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.locator(".wallet-card")).toBeVisible();
   await page.emulateMedia({ media: "screen" });
 
+  await page.goto("/dashboard");
+  await expect(page.locator(".first-run-status")).toHaveText(["Complete", "Complete", "Complete", "Complete"]);
+  await page.goto("/emergency");
+
   const publicContext = await page.context().browser()!.newContext();
   const publicPage = await publicContext.newPage();
   monitor(publicPage);
@@ -344,6 +403,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   expect(publicResponse!.headers()["cache-control"]).toContain("no-store");
   expect(publicResponse!.headers()["referrer-policy"]).toBe("no-referrer");
   await expect(publicPage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
+  await expectAccessible(publicPage);
   await expect(publicPage.getByText("Test Patient", { exact: false }).first()).toBeVisible();
   await page.goto("/emergency");
   await expect(page.getByText(/viewed 1×/)).toBeVisible();
@@ -421,7 +481,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(familyPage.getByText("synthetic-lab-report.png")).toBeVisible();
   await expect(familyPage.getByRole("button", { name: "Choose a file" })).toHaveCount(0);
   await familyPage.getByRole("button", { name: "Details" }).click();
-  await expect(familyPage.getByTitle("Preview synthetic-lab-report.png")).toBeVisible();
+  await expect(familyPage.getByAltText("Preview of synthetic-lab-report.png")).toBeVisible();
   await expect(familyPage.getByRole("button", { name: "Delete document" })).toHaveCount(0);
   await familyPage.goto("/timeline");
   await expect(familyPage.getByText(/This profile is read-only/)).toBeVisible();
@@ -443,6 +503,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
     expect(layout.width <= 375, `${route} mobile overflow: ${JSON.stringify(layout)}`).toBe(true);
   }
   await page.goto("/settings/account");
+  await expect(page.getByRole("heading", { name: "Export my data" })).toBeVisible();
+  await expectAccessible(page);
   const exportDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download export" }).click();
   expect((await exportDownload).suggestedFilename()).toBe("medical-passport-export.json");

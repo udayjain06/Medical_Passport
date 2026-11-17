@@ -63,18 +63,37 @@ type Props = {
 export function ExtractionReview({ documentId, canEdit, processingStatus, onChanged }: Props) {
   const { language, t } = useLanguage();
   const [extraction, setExtraction] = useState<Extraction | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [externalAiConfigured, setExternalAiConfigured] = useState(false);
   const [aiConsent, setAiConsent] = useState({ documentId, checked: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let active = true;
     apiRequest<{ external_ai_configured: boolean }>("/auth/ai-capabilities")
-      .then((capabilities) => setExternalAiConfigured(capabilities.external_ai_configured))
-      .catch(() => setExternalAiConfigured(false));
+      .then((capabilities) => {
+        if (active) setExternalAiConfigured(capabilities.external_ai_configured);
+      })
+      .catch(() => {
+        if (active) setExternalAiConfigured(false);
+      });
     apiRequest<Extraction>(`/documents/${documentId}/extraction`)
-      .then(setExtraction)
-      .catch(() => setExtraction(null)); // no extraction yet
+      .then((result) => {
+        if (active) setExtraction(result);
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        if (!(caught instanceof ApiError && caught.status === 404)) {
+          setError(caught instanceof ApiError ? caught.message : "Could not load extraction review.");
+        }
+      })
+      .finally(() => {
+        if (active) setInitialLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [documentId]);
 
   async function run<T>(task: () => Promise<T>, fallback: string) {
@@ -217,6 +236,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
     <section className="review-box">
       <h3>{t("extractionTitle")}</h3>
       <p>{t("extractionIntro")}</p>
+      {initialLoading && <p role="status">{t("extractionLoading")}</p>}
       {externalAiConfigured && canEdit && extraction?.status !== "confirmed" && (
         <label className="ai-consent">
           <input
@@ -230,7 +250,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
       {extraction?.ai_provider && extraction.ai_processed_at && (
         <p className="field-hint">{language === "hi" ? "बाहरी AI संसाधन" : "External AI processing"}: {extraction.ai_provider} · {new Date(extraction.ai_processed_at).toLocaleString()} ({language === "hi" ? "सहमति के बाद पहचान विवरण हटाकर भेजा गया" : "sent after consent with identifiers redacted"}).</p>
       )}
-      {canEdit && extraction?.status !== "confirmed" && (
+      {canEdit && !initialLoading && extraction?.status !== "confirmed" && (
         <button className="button" disabled={busy} onClick={() => void process()}>
           {busy ? t("working") : processingStatus === "failed" ? t("retryExtraction") : extraction ? t("rerunExtraction") : t("processDocument")}
         </button>

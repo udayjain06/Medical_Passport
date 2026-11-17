@@ -18,11 +18,13 @@ export default function AccountData() {
   const [consents, setConsents] = useState<Consent[] | null>(null);
   const [audit, setAudit] = useState<AuditItem[] | null>(null);
   const [consentMessage, setConsentMessage] = useState("");
+  const [recordsError, setRecordsError] = useState("");
   const consentLabel = (purpose: string) => language === "hi"
     ? ({ terms: "सेवा की शर्तें", privacy: "गोपनीयता सूचना", emergency_sharing: "आपातकालीन साझाकरण" } as Record<string, string>)[purpose] ?? purpose.replaceAll("_", " ")
     : purpose.replaceAll("_", " ");
 
   const refreshPrivacyRecords = useCallback(() => {
+    setRecordsError("");
     Promise.all([
       apiRequest<Consent[]>("/auth/consents"),
       apiRequest<AuditItem[]>("/auth/audit-log"),
@@ -30,14 +32,14 @@ export default function AccountData() {
       setConsents(nextConsents);
       setAudit(nextAudit);
     }).catch((caught) => {
-      setError(caught instanceof ApiError ? caught.message : "Could not load privacy records.");
-      setConsents([]);
-      setAudit([]);
+      setRecordsError(caught instanceof ApiError ? caught.message : "Could not load privacy records.");
+      setConsents(null);
+      setAudit(null);
     });
   }, []);
 
   useEffect(() => {
-    refreshPrivacyRecords();
+    Promise.resolve().then(refreshPrivacyRecords);
   }, [refreshPrivacyRecords]);
 
   async function withdrawEmergencyConsent() {
@@ -64,8 +66,10 @@ export default function AccountData() {
       const link = document.createElement("a");
       link.href = url;
       link.download = "medical-passport-export.json";
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Export failed. Try again.");
     } finally {
@@ -116,6 +120,12 @@ export default function AccountData() {
         <h1>{t("dataPrivacyTitle")}</h1>
         <p>{t("dataPrivacyIntro")}</p>
       </header>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {recordsError && (
+        <p className="form-error" role="alert">
+          {recordsError} <button type="button" className="text-button" onClick={refreshPrivacyRecords}>Retry</button>
+        </p>
+      )}
       <section className="panel">
         <h2>{t("exportMyData")}</h2>
         <p>{t("exportIntro")}</p>
@@ -127,7 +137,7 @@ export default function AccountData() {
       <section className="panel" style={{ marginTop: 20 }} aria-labelledby="consent-heading">
         <h2 id="consent-heading">{t("myConsents")}</h2>
         <p>{t("consentWithdrawInfo")}</p>
-        {consents === null ? <p role="status">{t("loadingConsents")}</p> : consents.length === 0 ? <p>{t("noConsents")}</p> : <ul className="privacy-record-list">
+        {consents === null && !recordsError ? <p role="status">{t("loadingConsents")}</p> : consents?.length === 0 ? <p>{t("noConsents")}</p> : consents && <ul className="privacy-record-list">
           {consents.map((consent) => <li key={consent.id}>
             <span><strong>{consentLabel(consent.purpose)}</strong> · {consent.version} · {new Date(consent.granted_at).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</span>
             <span>{consent.withdrawn_at ? `${t("withdrawn")} ${new Date(consent.withdrawn_at).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}` : t("consentActive")}</span>
@@ -139,7 +149,7 @@ export default function AccountData() {
       <section className="panel" style={{ marginTop: 20 }} aria-labelledby="audit-heading">
         <h2 id="audit-heading">{t("recentActivity")}</h2>
         <p>{t("activityIntro")}</p>
-        {audit === null ? <p role="status">{t("loadingActivity")}</p> : audit.length === 0 ? <p>{t("noActivity")}</p> : <ul className="privacy-record-list">
+        {audit === null && !recordsError ? <p role="status">{t("loadingActivity")}</p> : audit?.length === 0 ? <p>{t("noActivity")}</p> : audit && <ul className="privacy-record-list">
           {audit.map((item, index) => <li key={`${item.time}-${item.action}-${index}`}><time dateTime={item.time}>{new Date(item.time).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</time><span>{item.action.replaceAll(".", " · ")}</span></li>)}
         </ul>}
       </section>
@@ -154,7 +164,6 @@ export default function AccountData() {
           <label htmlFor="del-confirm">{t("deleteConfirm")}</label>
           <input id="del-confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
         </div>
-        {error && <p className="form-error" role="alert">{error}</p>}
         <button className="button button-danger" disabled={busy || !password || confirmText !== "DELETE"} onClick={() => void deleteAccount()}>
           {t("deletePermanently")}
         </button>
