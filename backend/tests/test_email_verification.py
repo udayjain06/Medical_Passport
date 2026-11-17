@@ -17,6 +17,8 @@ def _register_unverified(client: TestClient, email: str):
             "full_name": "Unverified Patient",
             "email": email,
             "password": "Safe-demo-passphrase-42",
+            "terms_accepted": True,
+            "privacy_acknowledged": True,
         },
     )
 

@@ -63,6 +63,22 @@ class AuthActionToken(Base):
 Index("ix_auth_action_tokens_user_purpose", AuthActionToken.user_id, AuthActionToken.purpose)
 
 
+class ConsentRecord(Base):
+    __tablename__ = "consent_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    purpose: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index("ix_consent_records_user_granted", ConsentRecord.user_id, ConsentRecord.granted_at)
+
+
 class PatientProfile(Base):
     __tablename__ = "patient_profiles"
 
@@ -169,6 +185,9 @@ class EmergencyShare(Base):
         ForeignKey("patient_profiles.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     shared_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False)

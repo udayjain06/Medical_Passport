@@ -18,6 +18,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, require_verified_email
 from app.models import (
     AuditEvent,
+    ConsentRecord,
     EmergencyAccessLog,
     EmergencyShare,
     PatientProfile,
@@ -83,6 +84,7 @@ def _issue_share(
     token = secrets.token_urlsafe(32)
     share = EmergencyShare(
         profile_id=profile.id,
+        created_by_user_id=user.id,
         token_hash=hashlib.sha256(token.encode()).hexdigest(),
         shared_fields=fields,
         expires_at=datetime.now(UTC) + timedelta(hours=hours),
@@ -90,6 +92,22 @@ def _issue_share(
     )
     db.add(share)
     db.flush()
+    consent = ConsentRecord(
+        user_id=user.id,
+        purpose="emergency_sharing",
+        version="v1",
+        granted_at=datetime.now(UTC),
+    )
+    db.add(consent)
+    db.flush()
+    db.add(
+        AuditEvent(
+            user_id=user.id,
+            action="consent.granted",
+            target_type="consent",
+            target_id=consent.id,
+        )
+    )
     db.add(
         AuditEvent(
             user_id=user.id, action=action, target_type="emergency_share", target_id=share.id

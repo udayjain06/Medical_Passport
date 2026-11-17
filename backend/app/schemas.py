@@ -15,6 +15,8 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=12, max_length=128)
+    terms_accepted: bool
+    privacy_acknowledged: bool
 
     @field_validator("full_name")
     @classmethod
@@ -23,6 +25,14 @@ class RegisterRequest(BaseModel):
         if not value:
             raise ValueError("Enter your full name")
         return value
+
+    @model_validator(mode="after")
+    def require_signup_consents(self) -> RegisterRequest:
+        if not self.terms_accepted or not self.privacy_acknowledged:
+            raise ValueError(
+                "Accept the terms and acknowledge the privacy notice to create an account"
+            )
+        return self
 
 
 class LoginRequest(BaseModel):

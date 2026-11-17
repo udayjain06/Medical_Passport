@@ -20,6 +20,8 @@ export function AuthForm({ mode }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const hydrated = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydrationSnapshot);
@@ -32,7 +34,17 @@ export function AuthForm({ mode }: Props) {
     try {
       await apiRequest<{ user: User }>(`/auth/${signup ? "register" : "login"}`, {
         method: "POST",
-        body: JSON.stringify(signup ? { full_name: fullName, email, password } : { email, password }),
+        body: JSON.stringify(
+          signup
+            ? {
+                full_name: fullName,
+                email,
+                password,
+                terms_accepted: termsAccepted,
+                privacy_acknowledged: privacyAcknowledged,
+              }
+            : { email, password },
+        ),
       });
       router.replace("/dashboard");
       router.refresh();
@@ -53,6 +65,16 @@ export function AuthForm({ mode }: Props) {
           {signup && <div className="field"><label htmlFor="full-name">Full name</label><input id="full-name" name="full_name" autoComplete="name" required maxLength={120} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>}
           <div className="field"><label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></div>
           <div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{signup && <span className="field-hint">Use at least 12 characters.</span>}</div>
+          {signup && <div className="signup-consents">
+            <label className="signup-consent" htmlFor="terms-accepted">
+              <input id="terms-accepted" name="terms_accepted" type="checkbox" required checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+              <span>I agree to the <Link href="/terms">Terms</Link>.</span>
+            </label>
+            <label className="signup-consent" htmlFor="privacy-acknowledged">
+              <input id="privacy-acknowledged" name="privacy_acknowledged" type="checkbox" required checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
+              <span>I acknowledge the <Link href="/privacy">Privacy notice</Link>.</span>
+            </label>
+          </div>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="button" type="submit" disabled={!hydrated || busy}>{busy ? "Please wait…" : signup ? "Create account" : "Log in"}</button>
         </form>

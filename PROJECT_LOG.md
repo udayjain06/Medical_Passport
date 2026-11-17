@@ -1,5 +1,19 @@
 # Project Log
 
+## 2026-11-17 — Final completion, Task 0: audit fixes
+
+- **Implemented:** Required Redis and trusted-proxy configuration for production, hid interactive API schemas in production, added per-user document-processing limits, rejected oversized OCR images safely, aligned backend tests with PostgreSQL CI where configured, and added a backup/restore runbook link.
+- **Files changed:** `backend/app/config.py`, `backend/app/main.py`, `backend/app/routers/documents.py`, `backend/app/extraction.py`, `backend/tests/conftest.py`, `backend/tests/test_production_hardening.py`, `.env.example`, `docker-compose.yml`, `.github/workflows/ci.yml`, `docs/DEPLOYMENT.md`, `docs/SECURITY_PRIVACY.md`, and `scripts/backup.md`.
+- **Verification:** Task 0 commit `1c64085` was made on `main`. Backend Ruff and the complete SQLite pytest suite passed (75 tests); frontend TypeScript and ESLint passed. PostgreSQL service runtime, Docker Compose execution, and the Task 0 isolated E2E rerun were not part of that commit's local verification. The rollback tag `pre-finish-project` was pushed before code edits.
+
+## 2026-11-17 — Final completion, Task 1: DPDP basics
+
+- **Implemented:** Added required Terms and Privacy acknowledgements at registration; persisted versioned consent records and consent audit actions; recorded emergency-sharing consent on create/renew; added owner-scoped consent listing/withdrawal and an audit viewer limited to timestamps/actions. Emergency-sharing withdrawal revokes active links attributed to the account. Added `/privacy` and `/terms` placeholder pages marked `REQUIRES LEGAL REVIEW`, linked from signup and the landing footer, and exposed consent/activity controls on Data & privacy.
+- **Files added:** Migration `backend/alembic/versions/d3a42e0976bf_dpdp_consent_and_share_ownership.py` and `backend/tests/test_dpdp_consent.py`.
+- **Files changed:** `backend/app/models.py`, `backend/app/schemas.py`, `backend/app/routers/auth.py`, `backend/app/routers/emergency.py`, `backend/tests/test_phase1.py`, `backend/tests/test_email_verification.py`, `backend/tests/test_rate_limit.py`, `frontend/src/app/globals.css`, `frontend/src/app/page.tsx`, `frontend/src/components/auth-form.tsx`, `frontend/src/app/(account)/settings/account/page.tsx`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/ROADMAP.md`, and this log.
+- **Verification:** Ruff passed. Full backend suite passed: **79 passed**, with one existing Starlette/httpx deprecation warning. The first sandbox run could not create temporary document-upload directories; rerunning with approved local filesystem access passed. Frontend TypeScript/ESLint and isolated Alembic upgrade/drift checks are still pending before this task's commit.
+- **Limitations:** Legal text remains a placeholder requiring review; this is not a DPDP-compliance claim. Historical emergency shares are attributed to the profile owner during migration; new shares record their creating user.
+
 ## 2026-11-04 — Phase 0 and Phase 1 foundation
 
 - **Features implemented:** Initialized a Next.js 16/React 19/TypeScript frontend; added a FastAPI service foundation, environment configuration, SQLAlchemy models and Alembic migration, health checks, registration/login/logout with HttpOnly session cookies and Argon2 password hashing, protected patient APIs, rate limiting, audit events, and a patient-entered profile workflow. (Work is in progress until checks below are completed.)

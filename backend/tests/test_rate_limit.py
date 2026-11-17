@@ -72,6 +72,8 @@ def test_auth_endpoint_fails_closed_when_shared_store_is_down(client, monkeypatc
             "full_name": "Rate Limit Patient",
             "email": "redis-auth-down@example.com",
             "password": "Safe-demo-passphrase-42",
+            "terms_accepted": True,
+            "privacy_acknowledged": True,
         },
     )
 

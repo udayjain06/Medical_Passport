@@ -59,6 +59,74 @@ a.button:active,button.button:active{transform:scale(.97)}
   background: #fff9e9;
 }
 
+.signup-consents {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.signup-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.signup-consent input {
+  width: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--teal);
+}
+
+.signup-consent a,
+.footer nav a {
+  color: var(--teal);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.footer nav {
+  display: flex;
+  gap: 16px;
+}
+
+.privacy-record-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.privacy-record-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .verification-banner h2 {
   margin: 0;
   font-size: 15px;

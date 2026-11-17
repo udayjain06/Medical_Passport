@@ -11,7 +11,13 @@ def register(client: TestClient, email: str, name: str = "Test Patient"):
     response = client.post(
         "/api/auth/register",
         headers=ORIGIN,
-        json={"full_name": name, "email": email, "password": PASSWORD},
+        json={
+            "full_name": name,
+            "email": email,
+            "password": PASSWORD,
+            "terms_accepted": True,
+            "privacy_acknowledged": True,
+        },
     )
     if response.status_code == 201:
         message = next(
@@ -106,7 +112,13 @@ def test_unauthenticated_access_and_untrusted_write_origin(client: TestClient):
     response = client.post(
         "/api/auth/register",
         headers={"Origin": "https://attacker.invalid"},
-        json={"full_name": "Nope", "email": "nope@example.com", "password": PASSWORD},
+        json={
+            "full_name": "Nope",
+            "email": "nope@example.com",
+            "password": PASSWORD,
+            "terms_accepted": True,
+            "privacy_acknowledged": True,
+        },
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "Untrusted request origin"
@@ -134,7 +146,13 @@ def test_validation_errors_do_not_echo_submitted_values(client: TestClient):
     response = client.post(
         "/api/auth/register",
         headers=ORIGIN,
-        json={"full_name": "Test", "email": "validation@example.com", "password": secret},
+        json={
+            "full_name": "Test",
+            "email": "validation@example.com",
+            "password": secret,
+            "terms_accepted": True,
+            "privacy_acknowledged": True,
+        },
     )
     assert response.status_code == 422
     assert secret not in response.text
