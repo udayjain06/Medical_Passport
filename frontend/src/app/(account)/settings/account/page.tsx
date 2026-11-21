@@ -76,6 +76,24 @@ export default function AccountData() {
     }
   }
 
+  async function exportFhir() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await apiRequest<unknown>("/export/fhir");
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/fhir+json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "medical-passport-fhir-r4-aligned.json";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "FHIR export failed. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteAccount() {
     setBusy(true);
     setError("");
@@ -100,6 +118,11 @@ export default function AccountData() {
         <h2>My consents</h2>
         <p>Terms and privacy consent cannot be withdrawn here. Delete your account to stop using the service and erase its account data.</p>
         {loading ? <p role="status">Loading consents…</p> : consents.length === 0 ? <p>No consent records are available.</p> : <ul>{consents.map((consent) => <li key={consent.id}>{consent.purpose.replaceAll("_", " ")} · version {consent.version} · {consent.withdrawn_at ? "withdrawn" : "active"}{consent.purpose === "emergency_sharing" && !consent.withdrawn_at && <button className="text-button" type="button" disabled={busy} onClick={() => void withdrawEmergencyConsent()}>Withdraw and revoke links</button>}</li>)}</ul>}
+      </section>
+      <section className="panel" style={{ marginTop: 20 }}>
+        <h2>FHIR R4-aligned export</h2>
+        <p>Downloads patient-confirmed, non-conflicted timeline events in a FHIR R4-aligned Bundle. This does not claim ABDM or NHCX compliance.</p>
+        <button className="button button-secondary" disabled={busy} onClick={() => void exportFhir()}>Download FHIR export</button>
       </section>
       <section className="panel" style={{ marginTop: 20 }}>
         <h2>Account activity</h2>

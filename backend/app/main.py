@@ -17,6 +17,7 @@ from app.routers import (
     emergency,
     extraction,
     family,
+    fhir_export,
     health,
     privacy,
     profile,
@@ -119,6 +120,7 @@ app.include_router(profile.router)
 app.include_router(privacy.router)
 app.include_router(documents.router)
 app.include_router(extraction.router)
+app.include_router(fhir_export.router)
 app.include_router(emergency.router)
 app.include_router(timeline.router)
 app.include_router(family.router)
