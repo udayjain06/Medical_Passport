@@ -187,6 +187,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByRole("button", { name: "Details" }).click();
   await page.getByRole("button", { name: "Run OCR and extraction" }).click();
   await expect(page.getByText("needs review")).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText(/send redacted OCR text/)).toHaveCount(0);
   await expect(page.locator(".review-box textarea").first()).toHaveValue(/Synthetic Lab Report/);
   // Nothing can be confirmed until the patient accepts at least one suggestion.
   await expect(page.getByRole("button", { name: /Add 0 accepted/ })).toBeDisabled();

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.request
 
 from pydantic import BaseModel, Field, field_validator
@@ -57,11 +58,17 @@ class CandidateFact(BaseModel):
         return value
 
 
-def extract_candidates(pages: list[dict]) -> tuple[list[dict], str]:
+def extract_candidates(
+    pages: list[dict], *, allow_ai: bool = False, patient_name: str | None = None
+) -> tuple[list[dict], str]:
     if not (
-        settings.medical_ai_endpoint and settings.medical_ai_api_key and settings.medical_ai_model
+        allow_ai
+        and settings.medical_ai_endpoint
+        and settings.medical_ai_api_key
+        and settings.medical_ai_model
     ):
         return _rules(pages), "rules-v1"
+    redacted_pages = redact_patient_identifiers(pages, patient_name)
     prompt = {
         "model": settings.medical_ai_model,
         "temperature": 0,
@@ -74,7 +81,7 @@ def extract_candidates(pages: list[dict]) -> tuple[list[dict], str]:
                     "original_value,normalized_value,confidence}]}. Confidence is 0..1."
                 ),
             },
-            {"role": "user", "content": json.dumps(pages, ensure_ascii=False)},
+            {"role": "user", "content": json.dumps(redacted_pages, ensure_ascii=False)},
         ],
         "response_format": {"type": "json_object"},
     }
@@ -82,6 +89,28 @@ def extract_candidates(pages: list[dict]) -> tuple[list[dict], str]:
         return _ai_candidates(prompt), settings.medical_ai_model
     except Exception:  # provider outage or malformed output: fall back to offline rules
         return _rules(pages), "rules-v1 (ai-fallback)"
+
+
+def redact_patient_identifiers(pages: list[dict], patient_name: str | None) -> list[dict]:
+    """Return OCR pages with the patient's name and long number sequences removed."""
+    name_pattern = (
+        re.compile(re.escape(patient_name.strip()), re.IGNORECASE) if patient_name else None
+    )
+    number_pattern = re.compile(r"(?<!\w)(?:\+?\d[\s().-]*){8,16}(?!\w)")
+    redacted = []
+    for page in pages:
+        clean_page = {**page}
+        lines = []
+        for line in page.get("lines", []):
+            clean_line = {**line}
+            text = str(clean_line.get("text", ""))
+            if name_pattern:
+                text = name_pattern.sub("[REDACTED]", text)
+            clean_line["text"] = number_pattern.sub("[REDACTED]", text)
+            lines.append(clean_line)
+        clean_page["lines"] = lines
+        redacted.append(clean_page)
+    return redacted
 
 
 def _rules(pages: list[dict]) -> list[dict]:

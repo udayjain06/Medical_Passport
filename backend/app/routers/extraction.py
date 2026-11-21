@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -34,6 +34,10 @@ class ReviewPayload(BaseModel):
     candidates: list[dict] = Field(max_length=300)
 
 
+class ProcessPayload(BaseModel):
+    ai_consent: bool = False
+
+
 REVIEW_STATUSES = {"pending", "accepted", "rejected"}
 # How each reviewed field becomes a timeline event: (category, title prefix).
 TIMELINE_MAP = {
@@ -59,6 +63,9 @@ def _serialize(extraction: DocumentExtraction, db: Session | None = None, **extr
         "ocr_text": extraction.ocr_text,
         "candidates": extraction.candidates,
         "engine_version": extraction.engine_version,
+        "ai_consent_granted": extraction.ai_consent_granted,
+        "ai_provider_name": extraction.ai_provider_name,
+        "ai_provider_at": extraction.ai_provider_at,
         "created_at": extraction.created_at,
         "updated_at": extraction.updated_at,
         "warnings": [],
@@ -102,11 +109,17 @@ def _get_extraction(db: Session, doc: MedicalDocument) -> DocumentExtraction:
 @router.post("/{document_id}/process")
 def process_document(
     document_id: uuid.UUID,
+    payload: ProcessPayload = Body(default=ProcessPayload()),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     x_patient_profile: uuid.UUID | None = Header(None),
 ):
     doc = _document(db, user, document_id, x_patient_profile)
+    profile = db.get(PatientProfile, doc.profile_id)
+    ai_configured = bool(
+        settings.medical_ai_endpoint and settings.medical_ai_api_key and settings.medical_ai_model
+    )
+    effective_ai_consent = payload.ai_consent and ai_configured
     require_write(_role(db, user, doc, x_patient_profile))
     auth_rate_limiter.check(
         f"document-process:{user.id}",
@@ -128,16 +141,27 @@ def process_document(
             profile_id=doc.profile_id,
             status="processing",
             engine_version="rapidocr+rules-v1",
+            ai_consent_granted=effective_ai_consent,
         )
         db.add(extraction)
     else:
         extraction.status = "processing"
+        extraction.ai_consent_granted = effective_ai_consent
+        extraction.ai_provider_name = None
+        extraction.ai_provider_at = None
         extraction.updated_at = datetime.now(UTC)
     doc.processing_status = "processing"
     db.commit()
     try:
         pages = extract_pages(document_storage.read(doc.profile_id, doc.id), doc.file_format)
-        candidates, engine = extract_candidates(pages)
+        candidates, engine = extract_candidates(
+            pages,
+            allow_ai=effective_ai_consent,
+            patient_name=profile.full_name if profile else None,
+        )
+        if effective_ai_consent and engine == settings.medical_ai_model:
+            extraction.ai_provider_name = settings.medical_ai_model
+            extraction.ai_provider_at = datetime.now(UTC)
         extraction.candidates = [
             {**candidate, "candidate_id": candidate.get("candidate_id") or str(uuid.uuid4())}
             for candidate in candidates
@@ -158,6 +182,23 @@ def process_document(
         db.commit()
         raise HTTPException(503, "Document processing failed; you can retry") from None
     return _serialize(extraction, warnings=_warnings(db, doc.profile_id, extraction.candidates))
+
+
+@router.get("/{document_id}/ai-capability")
+def ai_capability(
+    document_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    x_patient_profile: uuid.UUID | None = Header(None),
+):
+    _document(db, user, document_id, x_patient_profile)
+    return {
+        "available": bool(
+            settings.medical_ai_endpoint
+            and settings.medical_ai_api_key
+            and settings.medical_ai_model
+        )
+    }
 
 
 @router.get("/{document_id}/extraction")

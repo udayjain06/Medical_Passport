@@ -18,6 +18,9 @@ type Extraction = {
   status: string;
   ocr_text: string | null;
   engine_version: string;
+  ai_consent_granted?: boolean;
+  ai_provider_name?: string | null;
+  ai_provider_at?: string | null;
   candidates: Candidate[];
   warnings?: string[];
   created_events?: number;
@@ -56,6 +59,8 @@ type Props = {
 
 export function ExtractionReview({ documentId, canEdit, processingStatus, onChanged }: Props) {
   const [extraction, setExtraction] = useState<Extraction | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(false);
+  const [aiConsent, setAiConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -63,6 +68,12 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
     apiRequest<Extraction>(`/documents/${documentId}/extraction`)
       .then(setExtraction)
       .catch(() => setExtraction(null)); // no extraction yet
+  }, [documentId]);
+
+  useEffect(() => {
+    apiRequest<{ available: boolean }>(`/documents/${documentId}/ai-capability`)
+      .then((value) => setAiAvailable(value.available))
+      .catch(() => setAiAvailable(false));
   }, [documentId]);
 
   async function run<T>(task: () => Promise<T>, fallback: string) {
@@ -79,7 +90,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
 
   async function process() {
     const result = await run(
-      () => apiRequest<Extraction>(`/documents/${documentId}/process`, { method: "POST" }),
+      () => apiRequest<Extraction>(`/documents/${documentId}/process`, { method: "POST", body: JSON.stringify({ ai_consent: aiConsent }) }),
       "Processing failed. Retry.",
     );
     if (result) {
@@ -193,9 +204,12 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
         card until you accept it.
       </p>
       {canEdit && extraction?.status !== "confirmed" && (
+        <>
+        {aiAvailable && <label className="consent-line"><input type="checkbox" checked={aiConsent} onChange={(event) => setAiConsent(event.target.checked)} /> I agree to send redacted OCR text for this document to the configured AI provider for suggestions.</label>}
         <button className="button" disabled={busy} onClick={() => void process()}>
           {busy ? "Working…" : processingStatus === "failed" ? "Retry extraction" : extraction ? "Re-run extraction" : "Run OCR and extraction"}
         </button>
+        </>
       )}
       {error && <p className="form-error" role="alert">{error}</p>}
       {extraction?.warnings?.map((w) => (
@@ -206,6 +220,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
           <p>
             Status: <strong>{extraction.status.replace("_", " ")}</strong> · engine: {extraction.engine_version}
           </p>
+          {extraction.ai_provider_name && extraction.ai_provider_at && <p>AI suggestions from {extraction.ai_provider_name} · {new Date(extraction.ai_provider_at).toLocaleString()}</p>}
           {extraction.status === "confirmed" && extraction.created_events !== undefined && (
             <p role="status">
               {extraction.created_events} added to your <Link href="/timeline">timeline</Link>
