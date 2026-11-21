@@ -64,6 +64,12 @@ test("registration, protected profile, persistence, logout, and login", async ({
   const email = `patient-${Date.now()}@example.com`;
   const password = "Safe-demo-passphrase-42";
   await page.goto("/signup");
+  await page.getByLabel("Language").selectOption("hi");
+  await expect(page.locator("html")).toHaveAttribute("lang", "hi");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "अपना खाता बनाएं" })).toBeVisible();
+  await page.locator('select[aria-label="भाषा"]').selectOption("en");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await page.getByLabel("Full name").fill("Test Patient");
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password").fill(password);

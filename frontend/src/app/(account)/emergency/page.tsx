@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useLanguage } from "@/lib/language";
 
 const FIELDS = ["full_name", "blood_group", "known_allergies", "major_conditions", "current_medications", "emergency_contacts"] as const;
 const LABELS: Record<string, string> = {
@@ -47,6 +48,7 @@ function WalletCard({ card }: { card: Created }) {
 }
 
 export default function Emergency() {
+  const { t } = useLanguage();
   const [selected, setSelected] = useState<string[]>(["full_name", "blood_group", "known_allergies", "major_conditions", "emergency_contacts"]);
   const [hours, setHours] = useState(24);
   const [label, setLabel] = useState("");
@@ -130,8 +132,8 @@ export default function Emergency() {
   return (
     <main className="page-wrap">
       <header className="page-heading">
-        <p className="eyebrow">Consent-controlled access</p>
-        <h1>Emergency profile</h1>
+        <p className="eyebrow">{t("Consent-controlled access")}</p>
+        <h1>{t("Emergency profile")}</h1>
         <p>
           Choose exactly what someone with your QR link can see. Anyone holding the link can view these fields until
           it expires or you revoke it. Every view is recorded below.
@@ -139,7 +141,7 @@ export default function Emergency() {
       </header>
 
       <section className="panel">
-        <h2>Choose information to share</h2>
+        <h2>{t("Choose information to share")}</h2>
         <div className="emergency-fields">
           {FIELDS.map((f) => (
             <label key={f}>
@@ -148,7 +150,7 @@ export default function Emergency() {
                 checked={selected.includes(f)}
                 onChange={(e) => setSelected((v) => (e.target.checked ? [...v, f] : v.filter((x) => x !== f)))}
               />
-              {LABELS[f]}
+              {t(LABELS[f])}
             </label>
           ))}
         </div>
@@ -158,7 +160,7 @@ export default function Emergency() {
         </p>
         <div className="form-row">
           <div className="field">
-            <label htmlFor="share-expiry">Link expires</label>
+            <label htmlFor="share-expiry">{t("Link expires")}</label>
             <select id="share-expiry" value={hours} onChange={(e) => setHours(Number(e.target.value))}>
               {EXPIRY_OPTIONS.map((o) => (
                 <option key={o.hours} value={o.hours}>{o.label}</option>
@@ -166,7 +168,7 @@ export default function Emergency() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="share-label">Label (optional)</label>
+            <label htmlFor="share-label">{t("Label (optional)")}</label>
             <input id="share-label" maxLength={80} value={label} placeholder="Wallet card, phone lock screen…" onChange={(e) => setLabel(e.target.value)} />
           </div>
         </div>
@@ -175,7 +177,7 @@ export default function Emergency() {
           I understand anyone with this QR link can view the selected information.
         </label>
         <button className="button" disabled={busy || !consent || selected.length === 0} onClick={() => void create()}>
-          {busy ? "Working…" : "Create emergency QR"}
+          {busy ? "Working…" : t("Create emergency QR")}
         </button>
         {error && <p className="form-error" role="alert">{error}</p>}
         {created && (
@@ -184,15 +186,15 @@ export default function Emergency() {
             <p><a href={created.url}>{created.url}</a></p>
             <p className="field-hint">Save or print this now. For security the link cannot be shown again; use Renew to get a fresh QR.</p>
             <div className="review-actions" style={{ justifyContent: "center" }}>
-              <a className="button button-secondary" download="medical-passport-emergency-qr.png" href={created.qr_png_data_url}>Download QR</a>
-              <button className="button" type="button" onClick={() => window.print()}>Print wallet card</button>
+              <a className="button button-secondary" download="medical-passport-emergency-qr.png" href={created.qr_png_data_url}>{t("Download QR")}</a>
+              <button className="button" type="button" onClick={() => window.print()}>{t("Print wallet card")}</button>
             </div>
           </div>
         )}
       </section>
 
       <section className="panel share-list">
-        <h2>Active and previous links</h2>
+        <h2>{t("Active and previous links")}</h2>
         {shares.length === 0 ? (
           <p>No emergency links have been created.</p>
         ) : (

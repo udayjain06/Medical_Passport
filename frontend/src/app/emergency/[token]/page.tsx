@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 type Contact = { full_name: string; phone_number: string };
 type DocFact = { text: string; record_date: string | null };
@@ -85,6 +86,7 @@ export default function PublicEmergency() {
   if (error) {
     return (
       <main className="public-emergency">
+        <LanguageSwitcher />
         <section className="panel">
           <h1>Link unavailable</h1>
           <p>This emergency link may have expired or been revoked. If this is an emergency, call 112.</p>
@@ -92,11 +94,12 @@ export default function PublicEmergency() {
       </main>
     );
   }
-  if (!data) return <main className="public-emergency"><p role="status">Loading emergency information…</p></main>;
+  if (!data) return <main className="public-emergency"><LanguageSwitcher /><p role="status">Loading emergency information…</p></main>;
 
   const has = (k: keyof Data) => k in data;
   return (
     <main className="public-emergency">
+      <LanguageSwitcher />
       <p className="eyebrow">Medical Passport · Emergency summary / आपातकालीन सारांश</p>
       <h1>{data.full_name ?? "Emergency medical information"}</h1>
       {has("blood_group") && (

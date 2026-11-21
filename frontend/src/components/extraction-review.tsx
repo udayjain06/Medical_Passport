@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useLanguage } from "@/lib/language";
 
 type Candidate = {
   candidate_id?: string;
@@ -29,6 +30,7 @@ type Extraction = {
 
 const FIELD_LABELS: Record<string, string> = {
   patient_name: "Patient name",
+  age: "Age",
   doctor_name: "Doctor",
   hospital_name: "Hospital / lab",
   document_date: "Document date",
@@ -58,6 +60,7 @@ type Props = {
 };
 
 export function ExtractionReview({ documentId, canEdit, processingStatus, onChanged }: Props) {
+  const { t } = useLanguage();
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [aiAvailable, setAiAvailable] = useState(false);
   const [aiConsent, setAiConsent] = useState(false);
@@ -156,7 +159,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
   const renderRow = ({ c, i }: { c: Candidate; i: number }) => (
     <div className={`candidate candidate-${c.review_status}`} key={c.candidate_id ?? i}>
       <div className="candidate-head">
-        <strong>{FIELD_LABELS[c.field] ?? c.field}</strong>
+        <strong>{t(FIELD_LABELS[c.field] ?? c.field)}</strong>
         <span className={c.confidence < LOW_CONFIDENCE ? "badge badge-warn" : "badge"}>
           {Math.round(c.confidence * 100)}% · page {c.source_page ?? "?"}
         </span>
@@ -198,7 +201,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
 
   return (
     <section className="review-box">
-      <h3>Text extraction and review</h3>
+      <h3>{t("Text extraction and review")}</h3>
       <p>
         Medical Passport reads the document and suggests facts. Nothing reaches your timeline or emergency
         card until you accept it.

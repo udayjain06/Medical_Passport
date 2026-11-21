@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiRequest } from "@/lib/api";
+import { useLanguage } from "@/lib/language";
 
 type Event = {
   id: string;
@@ -38,6 +39,7 @@ const categories = ["Consultation", "Diagnosis", "Prescription", "Lab test", "Su
 const emptyDraft: Draft = { title: "", category: "Medical observation", event_date: "", summary: "", verification_status: "patient_entered", conflict_group: "", uncertainty_note: "" };
 
 export default function TimelineManager() {
+  const { t } = useLanguage();
   const [events, setEvents] = useState<Event[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [canEdit, setCanEdit] = useState(true);
@@ -135,7 +137,7 @@ export default function TimelineManager() {
   }
 
   return <main className="page-wrap">
-    <header className="page-heading"><p className="eyebrow">Source-linked history</p><h1>Medical timeline</h1><p>Patient-confirmed facts from records and entries you add yourself. Mark uncertain or conflicting history so it stays visible for review.</p></header>
+    <header className="page-heading"><p className="eyebrow">{t("Source-linked history")}</p><h1>{t("Medical timeline")}</h1><p>Patient-confirmed facts from records and entries you add yourself. Mark uncertain or conflicting history so it stays visible for review.</p></header>
     {canEdit ? <section className="panel">
       <h2>{editing ? "Edit timeline event" : "Add a patient-entered event"}</h2>
       <form className="form-grid" onSubmit={(event) => void save(event)}>

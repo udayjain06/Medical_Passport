@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useState, useSyncExternalStore } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useLanguage } from "@/lib/language";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 type Props = { mode: "login" | "signup" };
 type User = { id: string; email: string };
@@ -17,6 +19,7 @@ const getServerHydrationSnapshot = () => false;
 
 export function AuthForm({ mode }: Props) {
   const router = useRouter();
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -47,16 +50,17 @@ export function AuthForm({ mode }: Props) {
   return (
     <main className="auth-wrap">
       <section className="auth-card" aria-labelledby="form-title">
+        <LanguageSwitcher />
         <p className="eyebrow">Medical Passport</p>
-        <h1 id="form-title">{signup ? "Create your account" : "Welcome back"}</h1>
-        <p>{signup ? "Begin with a private, patient-reported health profile." : "Log in to continue to your health profile."}</p>
+        <h1 id="form-title">{t(signup ? "Create your account" : "Welcome back")}</h1>
+        <p>{t(signup ? "Begin with a private, patient-reported health profile." : "Log in to continue to your health profile.")}</p>
         <form className="form-grid" method="post" onSubmit={submit}>
-          {signup && <div className="field"><label htmlFor="full-name">Full name</label><input id="full-name" name="full_name" autoComplete="name" required maxLength={120} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>}
-          {signup && <label className="checkbox-row"><input type="checkbox" required checked={consent} onChange={(event) => setConsent(event.target.checked)} /> <span>I agree to the <Link href="/terms">Terms</Link> and acknowledge the <Link href="/privacy">Privacy Notice</Link>.</span></label>}
-          <div className="field"><label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></div>
-          <div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{signup && <span className="field-hint">Use at least 12 characters.</span>}</div>
+          {signup && <div className="field"><label htmlFor="full-name">{t("Full name")}</label><input id="full-name" name="full_name" autoComplete="name" required maxLength={120} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>}
+          {signup && <label className="checkbox-row"><input type="checkbox" required checked={consent} onChange={(event) => setConsent(event.target.checked)} /> <span>{t("I agree to the")} <Link href="/terms">{t("Terms")}</Link> {t("and acknowledge the")} <Link href="/privacy">{t("Privacy Notice")}</Link>.</span></label>}
+          <div className="field"><label htmlFor="email">{t("Email address")}</label><input id="email" name="email" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+          <div className="field"><label htmlFor="password">{t("Password")}</label><input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{signup && <span className="field-hint">{t("Use at least 12 characters.")}</span>}</div>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button" type="submit" disabled={!hydrated || busy}>{busy ? "Please wait…" : signup ? "Create account" : "Log in"}</button>
+          <button className="button" type="submit" disabled={!hydrated || busy}>{busy ? "Please wait…" : t(signup ? "Create account" : "Log in")}</button>
         </form>
         {!signup && <p className="form-footnote"><Link href="/forgot-password">Forgot your password?</Link></p>}
         <p className="form-footnote">{signup ? "Already registered? " : "New to Medical Passport? "}<Link href={signup ? "/login" : "/signup"}>{signup ? "Log in" : "Create an account"}</Link></p>

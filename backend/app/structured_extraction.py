@@ -38,8 +38,10 @@ _DATE_LABELS = [
     ),
 ]
 _LABELLED = {
+    "age": re.compile(r"^\s*(?:age|umra)\s*[:\-]\s*(\d{1,3}(?:\s*(?:years?|yrs?|y))?)$", re.I),
     "diagnosis": re.compile(
-        r"^\s*(?:provisional |final |clinical )?(?:diagnosis|dx|impression)\s*[:\-]\s*(.+)$", re.I
+        r"^\s*(?:provisional |final |clinical )?(?:diagnosis|dx|impression|nidaan)\s*[:\-]\s*(.+)$",
+        re.I,
     ),
     "condition": re.compile(
         r"^\s*(?:known case of|k/c/o|kco|chronic conditions?|past history|h/o)\s*[:\-]?\s*(.+)$",
@@ -53,6 +55,10 @@ _LABELLED = {
     "procedure": re.compile(
         r"^\s*(?:procedure|operation|surgery|operative procedure)\s*[:\-]\s*(.+)$", re.I
     ),
+    "medication": re.compile(r"^\s*(?:medication|medicine|dawa)\s*[:\-]\s*(.+)$", re.I),
+    "lab_test": re.compile(
+        r"^\s*(?:lab(?:oratory)? test|investigation|jaanch)\s*[:\-]\s*(.+)$", re.I
+    ),
 }
 _NEGATIVE_ALLERGY = re.compile(r"^\s*(nil|none|nka|nkda|no known.*|not known|n/a|-)\s*\.?$", re.I)
 _DOCTOR = re.compile(r"\b(Dr\.?\s+[A-Z][A-Za-z.]*(?:\s+[A-Z][A-Za-z.]*){0,3})")
@@ -62,7 +68,7 @@ _HOSPITAL = re.compile(
     re.I,
 )
 _PATIENT = re.compile(
-    r"^\s*(?:patient(?:'s)? name|name of patient|patient|name)\s*[:\-]\s*(.+)$", re.I
+    r"^\s*(?:patient(?:'s)? name|name of patient|patient|name|naam)\s*[:\-]\s*(.+)$", re.I
 )
 _MED = re.compile(
     r"^\s*(?:\d{1,2}\s*[.)\-]\s*)?(?:Rx\s*)?(?P<form>tab(?:let)?s?|cap(?:sule)?s?|syp|syrup|inj(?:ection)?|"
