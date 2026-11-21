@@ -99,6 +99,12 @@ Back up the named `document_data` Docker volume with the organization’s volume
 
 At least once before a pilot and on the organization’s schedule thereafter, restore both snapshots to an isolated network with outbound mail and public access disabled. Apply no schema changes until the restored database and volume are paired. Verify migrations, `/readyz`, profile and timeline metadata, and read/decrypt a designated synthetic document. Record the recovery time and outcome; then destroy the isolated copy according to the retention policy.
 
+## Verification status and human approvals
+
+The automated project checks use synthetic records, a local SQLite database, and headless Chromium. They do not verify external delivery or deployed-service behavior. Before a supervised pilot, an operator must validate the actual PostgreSQL migration and restore path, Redis-backed rate limits, ClamAV scanning, SMTP/Resend delivery, production encryption and key recovery, HTTPS/proxy trust, and the deployed `/healthz` and `/readyz` endpoints. Docker Compose configuration and images also need to be exercised on a host with Docker available.
+
+Human owners must complete legal/privacy review of the placeholder notices, clinical review of extraction and emergency presentation, independent security review, and a restore rehearsal. Confirm the legal authority process for dependent profiles; the checkbox in the app is only an attestation. Physical Android/iOS installability and screen-reader use still need device testing. The ABDM sandbox application and any official credentials/approvals are pending; the connector is disabled and no link workflow is verified. These gates are not represented as completed by passing automated tests.
+
 ## Incident checklist
 
 1. Contain access: disable the affected account or service, rotate exposed credentials, and restrict the API/operations network as appropriate.

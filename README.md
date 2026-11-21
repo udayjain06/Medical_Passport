@@ -97,6 +97,14 @@ The automated suite covers registration/login and profile persistence, local OCR
 
 The security/operations suite also covers email-provider redaction and failure handling, verification/reset token expiry and replay, password-reset session invalidation, generic forgot-password responses, unverified-user restrictions, Redis failure modes, EICAR rejection and scanner outages, encryption-key rotation, request-size limits, security headers, and structured-log redaction. `docker compose config` and container image builds require Docker Compose v2.
 
+## Verification and open items
+
+The Playwright Chromium journey covers signup consent, language switching with cookie persistence, local document OCR and patient review, accepted facts on the timeline, emergency QR access from a separate browser context, access history, renewal and revocation, family-profile isolation, FHIR and account export downloads, emergency-consent withdrawal, and account deletion. Axe checks run on login, signup, document review, emergency management and scan pages, and Data & privacy. Keyboard checks cover authentication fields and the document sheet. These are targeted automated checks, not a full accessibility audit.
+
+The service worker caches only a fixed static offline-card shell. The optional device-local card uses IndexedDB with WebCrypto and a patient PIN; it can become stale and has no PIN recovery. Hindi labels and language preference are available, but OCR recognition remains limited to the installed model/configuration. Android/iOS installation and assistive-technology behavior have not been tested on physical devices.
+
+Local automated verification does not establish deployment readiness. Real SMTP/Resend delivery, a live AI provider, a shared Redis service, ClamAV service behavior, PostgreSQL service operation, Docker image/Compose execution, and backup/restore rehearsal require separate operational verification. The ABDM sandbox application is pending and the connector remains disabled. Legal/privacy review, clinical validation, independent security review, and review of dependent-authority procedures require responsible human owners. No production readiness, DPDP compliance, ABDM certification, or clinical validation is claimed.
+
 For a production build that uses a non-default API origin, set `API_ORIGIN` before `npm run build`; Next.js records the rewrite target during build. Local development defaults to the FastAPI service at `http://127.0.0.1:8010`.
 
 ABHA/ABDM connection status is explicitly shown as externally blocked. The connector does not simulate linking and cannot perform a live workflow without official sandbox/API access, credentials, and required approvals.

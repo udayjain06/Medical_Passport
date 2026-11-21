@@ -117,6 +117,13 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.locator(".first-run-list li")).toHaveCount(4);
   await expect(page.locator(".first-run-status")).toHaveText(["Not started", "Not started", "Not started", "Not started"]);
   await page.screenshot({ path: path.join(screenshotDir, "dashboard.png"), fullPage: true });
+  await page.getByRole("combobox", { name: "Language" }).selectOption("hi");
+  await expect(page.getByRole("heading", { name: "शुरुआती कदम" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "hi");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "शुरुआती कदम" })).toBeVisible();
+  await page.getByRole("combobox", { name: "भाषा" }).selectOption("en");
+  await expect(page.getByRole("heading", { name: "Your first steps" })).toBeVisible();
 
   const verificationPath = await getTestEmailLink(page, "email_verification");
   await page.goto(verificationPath);
@@ -241,6 +248,12 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByRole("button", { name: "Run OCR and extraction" }).click();
   await expect(page.getByText("needs review")).toBeVisible({ timeout: 60000 });
   await expect(page.locator(".review-box textarea").first()).toHaveValue(/Synthetic Lab Report/);
+  const aiCapabilities = await page.evaluate(async () => {
+    const response = await fetch("/api/auth/ai-capabilities", { credentials: "include" });
+    return await response.json() as { external_ai_configured: boolean };
+  });
+  expect(aiCapabilities.external_ai_configured).toBe(false);
+  await expect(page.getByRole("checkbox", { name: /Allow this document/ })).toHaveCount(0);
   await expectAccessible(page);
   // Nothing can be confirmed until the patient accepts at least one suggestion.
   await expect(page.getByRole("button", { name: /Add 0 accepted/ })).toBeDisabled();
@@ -424,6 +437,14 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(publicPage.getByRole("heading", { name: "Link unavailable" })).toBeVisible();
   await publicContext.close();
 
+  await page.goto("/emergency");
+  await page.locator("#share-label").fill("Consent withdrawal test");
+  await page.getByRole("checkbox", { name: /I understand anyone with this QR link/ }).check();
+  await page.getByRole("button", { name: "Create emergency QR" }).click();
+  const withdrawalLink = await page.locator(".qr-result a").first().getAttribute("href");
+  expect(withdrawalLink).toBeTruthy();
+  const withdrawalUrl = new URL(new URL(withdrawalLink!).pathname, page.url()).toString();
+
   await page.goto("/family");
   await page.getByLabel("Dependent full name").fill("Synthetic Dependent");
   await page.getByText("I have consent or lawful authority").click();
@@ -505,9 +526,26 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.goto("/settings/account");
   await expect(page.getByRole("heading", { name: "Export my data" })).toBeVisible();
   await expectAccessible(page);
+  const fhirDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download FHIR Bundle" }).click();
+  expect((await fhirDownload).suggestedFilename()).toBe("medical-passport-fhir-r4-aligned.json");
   const exportDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download export" }).click();
   expect((await exportDownload).suggestedFilename()).toBe("medical-passport-export.json");
+  const withdrawalResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/auth/consents/emergency_sharing/withdraw") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Withdraw emergency-sharing consent and revoke links" }).click();
+  const withdrawalResult = await (await withdrawalResponse).json() as { withdrawn_records: number; revoked_links: number };
+  expect(withdrawalResult.withdrawn_records).toBeGreaterThan(0);
+  expect(withdrawalResult.revoked_links).toBeGreaterThan(0);
+  await expect(page.getByRole("status").filter({ hasText: "Consent withdrawn." })).toContainText("revoked.");
+  const withdrawnContext = await page.context().browser()!.newContext();
+  const withdrawnPage = await withdrawnContext.newPage();
+  monitor(withdrawnPage);
+  await withdrawnPage.goto(withdrawalUrl);
+  await expect(withdrawnPage.getByRole("heading", { name: "Link unavailable" })).toBeVisible();
+  await withdrawnContext.close();
   await page.getByLabel("Password").fill(replacementPassword);
   await page.getByLabel("Type DELETE to confirm").fill("DELETE");
   await page.getByRole("button", { name: "Delete account permanently" }).click();

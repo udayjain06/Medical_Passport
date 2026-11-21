@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 
@@ -39,15 +39,17 @@ export default function DashboardPage() {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [checklistLoading, setChecklistLoading] = useState(true);
   const [checklistError, setChecklistError] = useState("");
+  const checklistController = useRef<AbortController | null>(null);
 
-  const loadChecklist = useCallback(async (patientProfile: Profile) => {
+  const loadChecklist = useCallback(async (patientProfile: Profile, signal?: AbortSignal) => {
+    const requestSignal = signal ?? checklistController.current?.signal;
     setChecklistLoading(true);
     setChecklistError("");
     try {
       const [documents, confirmedFacts, shares] = await Promise.all([
-        apiRequest<Document[]>("/documents"),
-        apiRequest<TimelineEvent[]>("/timeline?verification_status=confirmed"),
-        apiRequest<EmergencyShare[]>("/emergency/shares"),
+        apiRequest<Document[]>("/documents", { signal: requestSignal }),
+        apiRequest<TimelineEvent[]>("/timeline?verification_status=confirmed", { signal: requestSignal }),
+        apiRequest<EmergencyShare[]>("/emergency/shares", { signal: requestSignal }),
       ]);
       const hasPatientDetails = Boolean(
         patientProfile.blood_group
@@ -65,26 +67,37 @@ export default function DashboardPage() {
         emergencyCard: hasEmergencyCard,
       });
     } catch (caught) {
-      setChecklistError(caught instanceof ApiError ? caught.message : t("firstRunError"));
+      if (!requestSignal?.aborted) {
+        setChecklistError(caught instanceof ApiError ? caught.message : t("firstRunError"));
+      }
     } finally {
-      setChecklistLoading(false);
+      if (!requestSignal?.aborted) setChecklistLoading(false);
     }
   }, [t]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    checklistController.current = controller;
     let active = true;
-    Promise.all([apiRequest<User>("/auth/me"), apiRequest<Profile>("/profile")])
+    Promise.all([
+      apiRequest<User>("/auth/me", { signal: controller.signal }),
+      apiRequest<Profile>("/profile", { signal: controller.signal }),
+    ])
       .then(([auth, patientProfile]) => {
         if (!active) return;
         setUser(auth);
         setProfile(patientProfile);
-        void loadChecklist(patientProfile);
+        void loadChecklist(patientProfile, controller.signal);
       })
       .catch((caught: unknown) => {
-        if (active) setError(caught instanceof ApiError ? caught.message : "Could not load your profile.");
+        if (active && !controller.signal.aborted) {
+          setError(caught instanceof ApiError ? caught.message : "Could not load your profile.");
+        }
       });
     return () => {
       active = false;
+      controller.abort();
+      if (checklistController.current === controller) checklistController.current = null;
     };
   }, [loadChecklist]);
 
