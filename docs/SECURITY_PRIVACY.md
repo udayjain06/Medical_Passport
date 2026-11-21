@@ -33,6 +33,8 @@
 
 ## Limits and launch requirements
 
+Registration returns 409 for an existing email as a deliberate usability tradeoff.
+
 The development cookie defaults to `Secure=false` for localhost only. The in-memory rate limiter does not coordinate multiple workers; configure `REDIS_URL` for shared limits. Email verification and password recovery flows are implemented, but production delivery still requires SMTP or Resend credentials and operational verification. SQLite is a local convenience; production needs PostgreSQL, encrypted backups, TLS, managed secrets, monitoring, and tested restore procedures. OCR processing has no durable job queue; cloud object storage, audit review tooling, and external security testing are not implemented. OCR text and candidates are encrypted when document encryption keys are configured; production requires keys. ClamAV scanning is required in production and must be kept available. Account export omits file bytes and QR bearer tokens; account deletion requires the password and removes uploaded blobs and owned data. Dependent authority is based on a user attestation and is not independently verified.
 
 Use synthetic records during development. Before a real-user launch, obtain appropriate Indian legal, privacy, clinical, and security review. Do not represent the product as ABDM certified or clinically validated.

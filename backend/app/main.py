@@ -25,6 +25,7 @@ from app.routers import (
 configure_logging()
 logger = logging.getLogger(__name__)
 
+production = settings.app_env == "production"
 app = FastAPI(
     title="Medical Passport API",
     version="0.1.0",
@@ -32,6 +33,9 @@ app = FastAPI(
         "Private patient profile and authentication API. "
         "Medical history features are being built incrementally."
     ),
+    docs_url=None if production else "/docs",
+    redoc_url=None if production else "/redoc",
+    openapi_url=None if production else "/openapi.json",
 )
 
 app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.request_max_size_bytes)

@@ -10,6 +10,8 @@ frontend/playwright-report/
 frontend/test-results/
 frontend/.playwright-browsers/
 backend/.venv/
+backend/.venv-task/
+backend/.pytest-tmp/
 backend/__pycache__/
 backend/**/__pycache__/
 backend/.pytest_cache/

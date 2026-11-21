@@ -28,7 +28,8 @@ Copy `.env.example` to `.env` and replace every example value. Compose reads thi
 | `REDIS_URL` | Recommended | Shared rate-limit store. Compose points to its internal Redis service. Auth routes fail closed when configured Redis is unavailable. |
 | `MALWARE_SCAN` | `clamav` | Production requires scanning. Compose points the API at the ClamAV service. |
 | `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_TIMEOUT_SECONDS` | Yes | Scanner service address and timeout; Compose supplies the internal host and port. |
-| `TRUSTED_PROXY_COUNT` | Yes | Number of trusted proxy hops appending `X-Forwarded-For`. Compose defaults to `1` because the API is called through Next.js. |
+| `TRUSTED_PROXY_COUNT` | Yes | Production requires at least `1` trusted proxy hop appending `X-Forwarded-For`. Compose defaults to `1` because the API is called through Next.js; local direct access may use `0`. |
+| `REDIS_URL` | Production | Required shared rate-limit store. Compose connects the API to its Redis service. |
 | `REQUEST_MAX_SIZE_BYTES`, `DOCUMENT_MAX_SIZE_BYTES` | Optional | Request and file upload limits. |
 | `EMERGENCY_MAX_HOURS`, `EMERGENCY_ACCESS_RATE_PER_MINUTE` | Optional | Emergency-share expiry and public endpoint rate limit. |
 | `MEDICAL_AI_ENDPOINT`, `MEDICAL_AI_API_KEY`, `MEDICAL_AI_MODEL` | Optional | External extraction provider. Configure only after reviewing patient consent, data handling, and provider terms. |
@@ -76,13 +77,15 @@ The API service should be private behind the web app and the approved TLS proxy.
 
 ## Reverse proxy and client IP
 
-Set `TRUSTED_PROXY_COUNT` to the number of trusted proxies that append `X-Forwarded-For` before the request reaches the API. The API must not be directly reachable from untrusted clients when this is nonzero. With the supplied topology, the API trusts only the Next.js hop (`1`). If a load balancer sits in front of Next.js, ensure Next.js itself overwrites/appends the client chain safely; do not blindly increase the API trust count. With no verified proxy chain, set `TRUSTED_PROXY_COUNT=0` so socket peer IP is used. Request logs intentionally store request IDs and routes but never full IP addresses, credentials, tokens, or document contents.
+Set `TRUSTED_PROXY_COUNT` to the number of trusted proxies that append `X-Forwarded-For` before the request reaches the API. Production requires at least one trusted hop and a configured `REDIS_URL`. The API must not be directly reachable from untrusted clients when proxy trust is enabled. With the supplied topology, the API trusts only the Next.js hop (`1`). If a load balancer sits in front of Next.js, ensure Next.js itself overwrites/appends the client chain safely; do not blindly increase the API trust count. With no verified proxy chain in local development, set `TRUSTED_PROXY_COUNT=0` so socket peer IP is used. Request logs intentionally store request IDs and routes but never full IP addresses, credentials, tokens, or document contents.
 
 ## Migrations
 
 Back up PostgreSQL before every schema change. Review the migration file, apply `alembic upgrade head` once before starting new replicas, and run `alembic check` in CI. Do not downgrade a production database as a routine rollback; deploy a forward fix or restore a verified backup into an isolated recovery environment first.
 
 ## Backups and restore test
+
+Follow the concise [backup and restore runbook](../scripts/backup.md) for PostgreSQL, document-volume, key backup, and rehearsal steps.
 
 Back up PostgreSQL and the `document_data` volume together. A database-only snapshot is insufficient because document metadata refers to encrypted files in that volume. Quiesce writes or use a coordinated volume/database snapshot so the two copies describe the same point in time. Store backups and the corresponding encryption-key version separately under access control. Never place backup files in the web root or a public bucket.
 

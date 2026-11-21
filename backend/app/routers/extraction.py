@@ -9,9 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import document_storage
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.extraction import extract_pages
+from app.extraction import OversizedImage, extract_pages
 from app.medical_ai import ALLOWED_FIELDS, extract_candidates
 from app.models import (
     AuditEvent,
@@ -22,6 +23,7 @@ from app.models import (
     User,
 )
 from app.profile_access import require_write
+from app.rate_limit import auth_rate_limiter
 from app.routers.documents import _document
 from app.structured_extraction import names_match
 
@@ -106,6 +108,12 @@ def process_document(
 ):
     doc = _document(db, user, document_id, x_patient_profile)
     require_write(_role(db, user, doc, x_patient_profile))
+    auth_rate_limiter.check(
+        f"document-process:{user.id}",
+        settings.document_process_rate_limit_count,
+        settings.document_process_rate_limit_window_seconds,
+        "Too many document processing requests; try again later.",
+    )
     extraction = db.scalar(
         select(DocumentExtraction).where(DocumentExtraction.document_id == doc.id)
     )
@@ -139,6 +147,11 @@ def process_document(
         extraction.status = "needs_review"
         doc.processing_status = extraction.status
         db.commit()
+    except OversizedImage as exc:
+        extraction.status = "failed"
+        doc.processing_status = "failed"
+        db.commit()
+        raise HTTPException(422, str(exc)) from None
     except Exception:
         extraction.status = "failed"
         doc.processing_status = "failed"

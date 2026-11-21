@@ -292,32 +292,42 @@ def test_production_settings_require_encryption_and_https():
         cookie_secure=True,
         cors_origins=["https://app.example.com"],
         public_app_url="https://app.example.com",
+        redis_url="redis://localhost:6379/0",
+        trusted_proxy_count=1,
         email_provider="smtp",
         smtp_host="smtp.example.com",
         malware_scan="clamav",
     )
+
+    def make_settings(**kwargs):
+        return Settings(_env_file=None, **kwargs)
+
     with pytest.raises(ValueError):
-        Settings(**base)  # no document_encryption_key
+        make_settings(**base)  # no document_encryption_key
     from cryptography.fernet import Fernet
 
     key = Fernet.generate_key().decode()
     base_without_secret = {name: value for name, value in base.items() if name != "secret_key"}
     with pytest.raises(ValueError, match="SECRET_KEY"):
-        Settings(**base_without_secret, document_encryption_key=key)
+        make_settings(**base_without_secret, document_encryption_key=key)
     with pytest.raises(ValueError):
-        Settings(**base, document_encryption_key="not-a-key")
+        make_settings(**base, document_encryption_key="not-a-key")
     with pytest.raises(ValueError):
         base_http = {**base, "cors_origins": ["http://localhost:3000"]}
-        Settings(**base_http, document_encryption_key=key)
-    assert Settings(**base, document_encryption_key=key).app_env == "production"
+        make_settings(**base_http, document_encryption_key=key)
+    assert make_settings(**base, document_encryption_key=key).app_env == "production"
+    for missing in ("redis_url", "trusted_proxy_count"):
+        invalid = {**base, missing: None if missing == "redis_url" else 0}
+        with pytest.raises(ValueError, match="REDIS_URL|TRUSTED_PROXY_COUNT"):
+            make_settings(**invalid, document_encryption_key=key)
     with pytest.raises(ValueError, match="MALWARE_SCAN=clamav"):
-        Settings(**{**base, "malware_scan": "off"}, document_encryption_key=key)
+        make_settings(**{**base, "malware_scan": "off"}, document_encryption_key=key)
     with pytest.raises(ValueError, match="EMAIL_PROVIDER=console"):
-        Settings(**{**base, "email_provider": "console"}, document_encryption_key=key)
+        make_settings(**{**base, "email_provider": "console"}, document_encryption_key=key)
     with pytest.raises(ValueError, match="must use TLS"):
-        Settings(**base, document_encryption_key=key, smtp_starttls=False)
+        make_settings(**base, document_encryption_key=key, smtp_starttls=False)
     with pytest.raises(ValueError, match="EMAIL_TEST_HOOK_ENABLED"):
-        Settings(**base, document_encryption_key=key, email_test_hook_enabled=True)
+        make_settings(**base, document_encryption_key=key, email_test_hook_enabled=True)
 
 
 def test_rules_parse_indian_dates_and_ignore_none_allergies():

@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import io
+import warnings
 
 import numpy as np
 import pypdfium2 as pdfium
 from PIL import Image
 from rapidocr_onnxruntime import RapidOCR
+
+Image.MAX_IMAGE_PIXELS = 20_000_000
+
+
+class OversizedImage(ValueError):
+    """Raised when an image exceeds the configured safe pixel limit."""
+
 
 _engine: RapidOCR | None = None
 
@@ -24,7 +32,14 @@ def extract_pages(data: bytes, file_format: str) -> list[dict]:
             raise ValueError("Documents over 20 pages need to be split before processing")
         images = [page.render(scale=1.5).to_pil().convert("RGB") for page in pdf]
     elif file_format in {"jpg", "png"}:
-        images = [Image.open(io.BytesIO(data)).convert("RGB")]
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(io.BytesIO(data)) as source:
+                    source.load()
+                    images = [source.convert("RGB")]
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+            raise OversizedImage("Image is too large to process safely") from exc
     else:
         raise ValueError("Unsupported document format")
     output = []
