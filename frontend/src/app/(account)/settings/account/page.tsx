@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 
 export default function AccountData() {
@@ -10,6 +10,53 @@ export default function AccountData() {
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [consents, setConsents] = useState<Array<{ id: string; purpose: string; version: string; granted_at: string; withdrawn_at: string | null }>>([]);
+  const [audit, setAudit] = useState<Array<{ time: string; action: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function loadPrivacyData() {
+    try {
+      const [records, events] = await Promise.all([
+        apiRequest<typeof consents>("/privacy/consents"),
+        apiRequest<typeof audit>("/privacy/audit"),
+      ]);
+      setConsents(records);
+      setAudit(events);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "Could not load privacy data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([apiRequest<typeof consents>("/privacy/consents"), apiRequest<typeof audit>("/privacy/audit")])
+      .then(([records, events]) => {
+        if (active) {
+          setConsents(records);
+          setAudit(events);
+        }
+      })
+      .catch((caught: unknown) => {
+        if (active) setError(caught instanceof ApiError ? caught.message : "Could not load privacy data.");
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  async function withdrawEmergencyConsent() {
+    setBusy(true);
+    setError("");
+    try {
+      await apiRequest("/privacy/consents/emergency_sharing/withdraw", { method: "POST" });
+      await loadPrivacyData();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "Could not withdraw consent.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function exportData() {
     setBusy(true);
@@ -49,6 +96,16 @@ export default function AccountData() {
         <h1>Data &amp; privacy</h1>
         <p>Download a copy of your records or permanently erase your account.</p>
       </header>
+      <section className="panel">
+        <h2>My consents</h2>
+        <p>Terms and privacy consent cannot be withdrawn here. Delete your account to stop using the service and erase its account data.</p>
+        {loading ? <p role="status">Loading consents…</p> : consents.length === 0 ? <p>No consent records are available.</p> : <ul>{consents.map((consent) => <li key={consent.id}>{consent.purpose.replaceAll("_", " ")} · version {consent.version} · {consent.withdrawn_at ? "withdrawn" : "active"}{consent.purpose === "emergency_sharing" && !consent.withdrawn_at && <button className="text-button" type="button" disabled={busy} onClick={() => void withdrawEmergencyConsent()}>Withdraw and revoke links</button>}</li>)}</ul>}
+      </section>
+      <section className="panel" style={{ marginTop: 20 }}>
+        <h2>Account activity</h2>
+        <p>Recent account events. This view contains no event payloads.</p>
+        {loading ? <p role="status">Loading activity…</p> : audit.length === 0 ? <p>No account activity recorded yet.</p> : <ul>{audit.map((event, index) => <li key={`${event.time}-${index}`}>{new Date(event.time).toLocaleString()} · {event.action}</li>)}</ul>}
+      </section>
       <section className="panel">
         <h2>Export my data</h2>
         <p>A JSON file with your profile, timeline, document list and emergency links. Document files are not included.</p>

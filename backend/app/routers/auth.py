@@ -23,6 +23,7 @@ from app.email import (
 )
 from app.models import (
     AuditEvent,
+    ConsentRecord,
     EmergencyShare,
     MedicalDocument,
     PatientProfile,
@@ -92,6 +93,8 @@ def register(
     db: Session = Depends(get_db),
 ) -> AuthResponse:
     _rate_limit(request, "register")
+    if not payload.terms_consent or not payload.privacy_consent:
+        raise HTTPException(422, "Consent to the terms and privacy notice is required")
     email = str(payload.email).strip().lower()
     user = User(email=email, password_hash=hash_password(payload.password))
     user.profiles.append(PatientProfile(full_name=payload.full_name, is_primary=True))
@@ -102,6 +105,12 @@ def register(
             AuditEvent(
                 user_id=user.id, action="account.registered", target_type="user", target_id=user.id
             )
+        )
+        db.add_all(
+            [
+                ConsentRecord(user_id=user.id, purpose=purpose, version="v1")
+                for purpose in ("terms", "privacy")
+            ]
         )
         verification_token = issue_token(db, user.id, "email_verification", timedelta(hours=24))
         db.commit()

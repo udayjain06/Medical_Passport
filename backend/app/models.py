@@ -129,6 +129,24 @@ class AuditEvent(Base):
 Index("ix_audit_events_user_created", AuditEvent.user_id, AuditEvent.created_at)
 
 
+class ConsentRecord(Base):
+    __tablename__ = "consent_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False)
+    version: Mapped[str] = mapped_column(String(40), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index("ix_consent_records_user_purpose", ConsentRecord.user_id, ConsentRecord.purpose)
+
+
 class MedicalDocument(Base):
     __tablename__ = "medical_documents"
 

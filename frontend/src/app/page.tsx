@@ -31,6 +31,6 @@ export default function Home() {
         </div>
       </section>
     </main>
-    <footer className="footer">Medical Passport is a personal record tool, not a substitute for professional medical advice.</footer>
+    <footer className="footer">Medical Passport is a personal record tool, not a substitute for professional medical advice. <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link></footer>
   </>;
 }

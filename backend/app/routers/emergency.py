@@ -18,6 +18,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, require_verified_email
 from app.models import (
     AuditEvent,
+    ConsentRecord,
     EmergencyAccessLog,
     EmergencyShare,
     PatientProfile,
@@ -89,6 +90,15 @@ def _issue_share(
         label=(label or "").strip() or None,
     )
     db.add(share)
+    active_consent = db.scalar(
+        select(ConsentRecord.id).where(
+            ConsentRecord.user_id == user.id,
+            ConsentRecord.purpose == "emergency_sharing",
+            ConsentRecord.withdrawn_at.is_(None),
+        )
+    )
+    if active_consent is None:
+        db.add(ConsentRecord(user_id=user.id, purpose="emergency_sharing", version="v1"))
     db.flush()
     db.add(
         AuditEvent(

@@ -11,7 +11,13 @@ def register(client: TestClient, email: str, name: str = "Test Patient"):
     response = client.post(
         "/api/auth/register",
         headers=ORIGIN,
-        json={"full_name": name, "email": email, "password": PASSWORD},
+        json={
+            "full_name": name,
+            "email": email,
+            "password": PASSWORD,
+            "terms_consent": True,
+            "privacy_consent": True,
+        },
     )
     if response.status_code == 201:
         message = next(

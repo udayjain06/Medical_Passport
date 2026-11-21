@@ -67,6 +67,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByLabel("Full name").fill("Test Patient");
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password").fill(password);
+  await page.getByRole("checkbox").check();
   const registerResponse = page.waitForResponse((response) =>
     response.url().includes("/api/auth/register") && response.request().method() === "POST",
   );

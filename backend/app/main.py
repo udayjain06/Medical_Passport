@@ -18,6 +18,7 @@ from app.routers import (
     extraction,
     family,
     health,
+    privacy,
     profile,
     timeline,
 )
@@ -115,6 +116,7 @@ async def safe_validation_error(request: Request, exc: RequestValidationError) -
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(profile.router)
+app.include_router(privacy.router)
 app.include_router(documents.router)
 app.include_router(extraction.router)
 app.include_router(emergency.router)

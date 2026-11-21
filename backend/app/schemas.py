@@ -15,6 +15,8 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=12, max_length=128)
+    terms_consent: bool = False
+    privacy_consent: bool = False
 
     @field_validator("full_name")
     @classmethod

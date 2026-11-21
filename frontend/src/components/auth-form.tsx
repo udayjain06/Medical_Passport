@@ -20,6 +20,7 @@ export function AuthForm({ mode }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const hydrated = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydrationSnapshot);
@@ -32,7 +33,7 @@ export function AuthForm({ mode }: Props) {
     try {
       await apiRequest<{ user: User }>(`/auth/${signup ? "register" : "login"}`, {
         method: "POST",
-        body: JSON.stringify(signup ? { full_name: fullName, email, password } : { email, password }),
+        body: JSON.stringify(signup ? { full_name: fullName, email, password, terms_consent: consent, privacy_consent: consent } : { email, password }),
       });
       router.replace("/dashboard");
       router.refresh();
@@ -51,6 +52,7 @@ export function AuthForm({ mode }: Props) {
         <p>{signup ? "Begin with a private, patient-reported health profile." : "Log in to continue to your health profile."}</p>
         <form className="form-grid" method="post" onSubmit={submit}>
           {signup && <div className="field"><label htmlFor="full-name">Full name</label><input id="full-name" name="full_name" autoComplete="name" required maxLength={120} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>}
+          {signup && <label className="checkbox-row"><input type="checkbox" required checked={consent} onChange={(event) => setConsent(event.target.checked)} /> <span>I agree to the <Link href="/terms">Terms</Link> and acknowledge the <Link href="/privacy">Privacy Notice</Link>.</span></label>}
           <div className="field"><label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></div>
           <div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{signup && <span className="field-hint">Use at least 12 characters.</span>}</div>
           {error && <p className="form-error" role="alert">{error}</p>}
