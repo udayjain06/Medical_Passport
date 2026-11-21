@@ -25,7 +25,6 @@ Copy `.env.example` to `.env` and replace every example value. Compose reads thi
 | `EMAIL_PROVIDER` | Yes | `smtp` or `resend` in production; console delivery is development only. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS`, `SMTP_USE_SSL`, `EMAIL_FROM` | For SMTP | Configure authenticated TLS delivery. Use either STARTTLS or implicit TLS. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | For Resend | Configure the Resend API provider and a verified sender. |
-| `REDIS_URL` | Recommended | Shared rate-limit store. Compose points to its internal Redis service. Auth routes fail closed when configured Redis is unavailable. |
 | `MALWARE_SCAN` | `clamav` | Production requires scanning. Compose points the API at the ClamAV service. |
 | `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_TIMEOUT_SECONDS` | Yes | Scanner service address and timeout; Compose supplies the internal host and port. |
 | `TRUSTED_PROXY_COUNT` | Yes | Production requires at least `1` trusted proxy hop appending `X-Forwarded-For`. Compose defaults to `1` because the API is called through Next.js; local direct access may use `0`. |
@@ -74,6 +73,12 @@ docker compose up -d --no-build
 ```
 
 The API service should be private behind the web app and the approved TLS proxy. Do not use sample passwords, console email, HTTP, or empty encryption keys in a pilot. Verify `/readyz`, email verification/reset delivery, upload scanning, and an encrypted document read before enabling real users.
+
+The installable PWA service worker caches only static shell assets. It bypasses API, document, and emergency routes. An optional emergency card is encrypted with a user PIN in browser IndexedDB; it is local to the device, has no remote wipe, and is exposed if an attacker can unlock that browser and knows the PIN. Users must opt in and can remove it in the app. This feature is a convenience for device loss of connectivity, not a backup or a substitute for carrying current emergency information.
+
+The application records consent for its stated purposes, including AI processing and emergency sharing. Configure an external medical AI provider only after reviewing its data handling and obtaining appropriate consent. The user interface includes English/Hindi switching, but the Hindi translation is partial. Terms and privacy content are product placeholders and require jurisdiction-specific legal review before a pilot. The automated axe checks cover selected screens and do not establish WCAG conformance.
+
+ABDM connectivity is disabled. No `ABDM_CLIENT_ID`, `ABDM_CLIENT_SECRET`, or `ABDM_BASE_URL` is configured in this environment; sandbox onboarding, credentials, authorization, and API validation remain prerequisites. The FHIR download is a local R4-aligned export and is not an ABDM/NHCX connection or certification.
 
 ## Reverse proxy and client IP
 
