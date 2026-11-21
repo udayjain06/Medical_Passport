@@ -1,5 +1,5 @@
 import io
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from app.config import Settings
@@ -10,7 +10,7 @@ from PIL import Image
 from test_phase1 import ORIGIN, register
 
 PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF"
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 
 def _lines(*texts):
