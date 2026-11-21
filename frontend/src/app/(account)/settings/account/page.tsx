@@ -1,58 +1,55 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { useLanguage } from "@/lib/language";
+import { useLanguage } from "@/lib/i18n";
+
+type Consent = { id: string; purpose: string; version: string; granted_at: string; withdrawn_at: string | null };
+type AuditItem = { time: string; action: string };
 
 export default function AccountData() {
+  const { language, t } = useLanguage();
   const router = useRouter();
-  const { t } = useLanguage();
   const [password, setPassword] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [consents, setConsents] = useState<Array<{ id: string; purpose: string; version: string; granted_at: string; withdrawn_at: string | null }>>([]);
-  const [audit, setAudit] = useState<Array<{ time: string; action: string }>>([]);
-  const [loading, setLoading] = useState(true);
+  const [consents, setConsents] = useState<Consent[] | null>(null);
+  const [audit, setAudit] = useState<AuditItem[] | null>(null);
+  const [consentMessage, setConsentMessage] = useState("");
+  const [recordsError, setRecordsError] = useState("");
+  const consentLabel = (purpose: string) => language === "hi"
+    ? ({ terms: "सेवा की शर्तें", privacy: "गोपनीयता सूचना", emergency_sharing: "आपातकालीन साझाकरण" } as Record<string, string>)[purpose] ?? purpose.replaceAll("_", " ")
+    : purpose.replaceAll("_", " ");
 
-  async function loadPrivacyData() {
-    try {
-      const [records, events] = await Promise.all([
-        apiRequest<typeof consents>("/privacy/consents"),
-        apiRequest<typeof audit>("/privacy/audit"),
-      ]);
-      setConsents(records);
-      setAudit(events);
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not load privacy data.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const refreshPrivacyRecords = useCallback(() => {
+    setRecordsError("");
+    Promise.all([
+      apiRequest<Consent[]>("/auth/consents"),
+      apiRequest<AuditItem[]>("/auth/audit-log"),
+    ]).then(([nextConsents, nextAudit]) => {
+      setConsents(nextConsents);
+      setAudit(nextAudit);
+    }).catch((caught) => {
+      setRecordsError(caught instanceof ApiError ? caught.message : "Could not load privacy records.");
+      setConsents(null);
+      setAudit(null);
+    });
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    Promise.all([apiRequest<typeof consents>("/privacy/consents"), apiRequest<typeof audit>("/privacy/audit")])
-      .then(([records, events]) => {
-        if (active) {
-          setConsents(records);
-          setAudit(events);
-        }
-      })
-      .catch((caught: unknown) => {
-        if (active) setError(caught instanceof ApiError ? caught.message : "Could not load privacy data.");
-      })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
+    Promise.resolve().then(refreshPrivacyRecords);
+  }, [refreshPrivacyRecords]);
 
   async function withdrawEmergencyConsent() {
     setBusy(true);
     setError("");
+    setConsentMessage("");
     try {
-      await apiRequest("/privacy/consents/emergency_sharing/withdraw", { method: "POST" });
-      await loadPrivacyData();
+      const result = await apiRequest<{ withdrawn_records: number; revoked_links: number }>("/auth/consents/emergency_sharing/withdraw", { method: "POST" });
+      setConsentMessage(`Consent withdrawn. ${result.revoked_links} active emergency link(s) revoked.`);
+      refreshPrivacyRecords();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Could not withdraw consent.");
     } finally {
@@ -69,8 +66,10 @@ export default function AccountData() {
       const link = document.createElement("a");
       link.href = url;
       link.download = "medical-passport-export.json";
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Export failed. Try again.");
     } finally {
@@ -83,12 +82,17 @@ export default function AccountData() {
     setError("");
     try {
       const data = await apiRequest<unknown>("/export/fhir");
-      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/fhir+json" }));
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/fhir+json",
+      });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.download = "medical-passport-fhir-r4-aligned.json";
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "FHIR export failed. Try again.");
     } finally {
@@ -112,44 +116,56 @@ export default function AccountData() {
   return (
     <main className="page-wrap">
       <header className="page-heading">
-        <p className="eyebrow">{t("Your data, your control")}</p>
-        <h1>{t("Data & privacy")}</h1>
-        <p>Download a copy of your records or permanently erase your account.</p>
+        <p className="eyebrow">{language === "hi" ? "आपका डेटा, आपका नियंत्रण" : "Your data, your control"}</p>
+        <h1>{t("dataPrivacyTitle")}</h1>
+        <p>{t("dataPrivacyIntro")}</p>
       </header>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {recordsError && (
+        <p className="form-error" role="alert">
+          {recordsError} <button type="button" className="text-button" onClick={refreshPrivacyRecords}>Retry</button>
+        </p>
+      )}
       <section className="panel">
-        <h2>{t("My consents")}</h2>
-        <p>Terms and privacy consent cannot be withdrawn here. Delete your account to stop using the service and erase its account data.</p>
-        {loading ? <p role="status">Loading consents…</p> : consents.length === 0 ? <p>No consent records are available.</p> : <ul>{consents.map((consent) => <li key={consent.id}>{consent.purpose.replaceAll("_", " ")} · version {consent.version} · {consent.withdrawn_at ? "withdrawn" : "active"}{consent.purpose === "emergency_sharing" && !consent.withdrawn_at && <button className="text-button" type="button" disabled={busy} onClick={() => void withdrawEmergencyConsent()}>Withdraw and revoke links</button>}</li>)}</ul>}
+        <h2>{t("exportMyData")}</h2>
+        <p>{t("exportIntro")}</p>
+        <button className="button" disabled={busy} onClick={() => void exportData()}>{t("downloadExport")}</button>
+        <h3>{t("fhirR4Export")}</h3>
+        <p>{language === "hi" ? "डाउनलोड में केवल पुष्टि की गई, विरोध या अनिश्चितता से मुक्त समयरेखा घटनाएँ और उनके स्रोत संदर्भ शामिल होते हैं। यह FHIR R4-अनुरूप है; ABDM/NHCX प्रोफ़ाइल अनुपालन का दावा नहीं है।" : "The download contains only confirmed timeline events without conflict or uncertainty, with source provenance. It is FHIR R4-aligned; no ABDM/NHCX profile conformance is claimed."}</p>
+        <button className="button button-secondary" disabled={busy} onClick={() => void exportFhir()}>{t("downloadFhir")}</button>
+      </section>
+      <section className="panel" style={{ marginTop: 20 }} aria-labelledby="consent-heading">
+        <h2 id="consent-heading">{t("myConsents")}</h2>
+        <p>{t("consentWithdrawInfo")}</p>
+        {consents === null && !recordsError ? <p role="status">{t("loadingConsents")}</p> : consents?.length === 0 ? <p>{t("noConsents")}</p> : consents && <ul className="privacy-record-list">
+          {consents.map((consent) => <li key={consent.id}>
+            <span><strong>{consentLabel(consent.purpose)}</strong> · {consent.version} · {new Date(consent.granted_at).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</span>
+            <span>{consent.withdrawn_at ? `${t("withdrawn")} ${new Date(consent.withdrawn_at).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}` : t("consentActive")}</span>
+          </li>)}
+        </ul>}
+        {consents?.some((consent) => consent.purpose === "emergency_sharing" && !consent.withdrawn_at) && <button className="button button-secondary" disabled={busy} onClick={() => void withdrawEmergencyConsent()}>{t("withdrawEmergency")}</button>}
+        {consentMessage && <p role="status">{consentMessage}</p>}
+      </section>
+      <section className="panel" style={{ marginTop: 20 }} aria-labelledby="audit-heading">
+        <h2 id="audit-heading">{t("recentActivity")}</h2>
+        <p>{t("activityIntro")}</p>
+        {audit === null && !recordsError ? <p role="status">{t("loadingActivity")}</p> : audit?.length === 0 ? <p>{t("noActivity")}</p> : audit && <ul className="privacy-record-list">
+          {audit.map((item, index) => <li key={`${item.time}-${item.action}-${index}`}><time dateTime={item.time}>{new Date(item.time).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}</time><span>{item.action.replaceAll(".", " · ")}</span></li>)}
+        </ul>}
       </section>
       <section className="panel" style={{ marginTop: 20 }}>
-        <h2>{t("FHIR R4-aligned export")}</h2>
-        <p>Downloads patient-confirmed, non-conflicted timeline events in a FHIR R4-aligned Bundle. This does not claim ABDM or NHCX compliance.</p>
-        <button className="button button-secondary" disabled={busy} onClick={() => void exportFhir()}>{t("Download FHIR export")}</button>
-      </section>
-      <section className="panel" style={{ marginTop: 20 }}>
-        <h2>Account activity</h2>
-        <p>Recent account events. This view contains no event payloads.</p>
-        {loading ? <p role="status">Loading activity…</p> : audit.length === 0 ? <p>No account activity recorded yet.</p> : <ul>{audit.map((event, index) => <li key={`${event.time}-${index}`}>{new Date(event.time).toLocaleString()} · {event.action}</li>)}</ul>}
-      </section>
-      <section className="panel">
-        <h2>{t("Export my data")}</h2>
-        <p>A JSON file with your profile, timeline, document list and emergency links. Document files are not included.</p>
-        <button className="button" disabled={busy} onClick={() => void exportData()}>Download export</button>
-      </section>
-      <section className="panel" style={{ marginTop: 20 }}>
-        <h2>{t("Delete my account")}</h2>
-        <p>This permanently erases your account, profiles you own, uploaded documents, timeline and emergency links. It cannot be undone.</p>
+        <h2>{t("deleteAccount")}</h2>
+        <p>{t("deleteAccountIntro")}</p>
         <div className="field">
-          <label htmlFor="del-pass">Password</label>
+          <label htmlFor="del-pass">{t("password")}</label>
           <input id="del-pass" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         <div className="field">
-          <label htmlFor="del-confirm">Type DELETE to confirm</label>
+          <label htmlFor="del-confirm">{t("deleteConfirm")}</label>
           <input id="del-confirm" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
         </div>
-        {error && <p className="form-error" role="alert">{error}</p>}
         <button className="button button-danger" disabled={busy || !password || confirmText !== "DELETE"} onClick={() => void deleteAccount()}>
-          Delete account permanently
+          {t("deletePermanently")}
         </button>
       </section>
     </main>

@@ -38,7 +38,6 @@ _DATE_LABELS = [
     ),
 ]
 _LABELLED = {
-    "age": re.compile(r"^\s*(?:age|umra)\s*[:\-]\s*(\d{1,3}(?:\s*(?:years?|yrs?|y))?)$", re.I),
     "diagnosis": re.compile(
         r"^\s*(?:provisional |final |clinical )?(?:diagnosis|dx|impression|nidaan)\s*[:\-]\s*(.+)$",
         re.I,
@@ -55,10 +54,6 @@ _LABELLED = {
     "procedure": re.compile(
         r"^\s*(?:procedure|operation|surgery|operative procedure)\s*[:\-]\s*(.+)$", re.I
     ),
-    "medication": re.compile(r"^\s*(?:medication|medicine|dawa)\s*[:\-]\s*(.+)$", re.I),
-    "lab_test": re.compile(
-        r"^\s*(?:lab(?:oratory)? test|investigation|jaanch)\s*[:\-]\s*(.+)$", re.I
-    ),
 }
 _NEGATIVE_ALLERGY = re.compile(r"^\s*(nil|none|nka|nkda|no known.*|not known|n/a|-)\s*\.?$", re.I)
 _DOCTOR = re.compile(r"\b(Dr\.?\s+[A-Z][A-Za-z.]*(?:\s+[A-Z][A-Za-z.]*){0,3})")
@@ -70,6 +65,9 @@ _HOSPITAL = re.compile(
 _PATIENT = re.compile(
     r"^\s*(?:patient(?:'s)? name|name of patient|patient|name|naam)\s*[:\-]\s*(.+)$", re.I
 )
+_AGE = re.compile(r"^\s*(?:age|umra|umar)\s*[:\-]\s*(.+)$", re.I)
+_MEDICATION_LABEL = re.compile(r"^\s*(?:dawa|medicine|medication)\s*[:\-]\s*(.+)$", re.I)
+_LAB_LABEL = re.compile(r"^\s*(?:jaanch|test|investigation)\s*[:\-]\s*(.+)$", re.I)
 _MED = re.compile(
     r"^\s*(?:\d{1,2}\s*[.)\-]\s*)?(?:Rx\s*)?(?P<form>tab(?:let)?s?|cap(?:sule)?s?|syp|syrup|inj(?:ection)?|"
     r"oint(?:ment)?|drops?|susp(?:ension)?|gel|cream|inhaler|sachet)\b\.?\s*(?P<body>.+)$",
@@ -207,6 +205,9 @@ def extract_structured(pages: list[dict]) -> list[dict]:
             if m := _PATIENT.match(line):
                 add(_candidate("patient_name", m.group(1), number, conf, line, weight=0.9))
                 continue
+            if m := _AGE.match(line):
+                add(_candidate("age", m.group(1), number, conf, line, weight=0.9))
+                continue
             handled = False
             for field, pattern in _LABELLED.items():
                 m = pattern.match(line)
@@ -222,6 +223,18 @@ def extract_structured(pages: list[dict]) -> list[dict]:
                 continue
             if m := _MED.match(line):
                 add(_medication(m, number, conf, line))
+                continue
+            if m := _MEDICATION_LABEL.match(line):
+                medication_text = m.group(1).strip()
+                medication_match = _MED.match(medication_text)
+                if medication_match:
+                    add(_medication(medication_match, number, conf, line))
+                else:
+                    add(
+                        _candidate(
+                            "medication", medication_text, number, conf, line, medication_text, 0.85
+                        )
+                    )
                 continue
             when = parse_date(line)
             if when is not None:
@@ -240,7 +253,9 @@ def extract_structured(pages: list[dict]) -> list[dict]:
             if m := _DOCTOR.search(line):
                 add(_candidate("doctor_name", m.group(1), number, conf, line, weight=0.8))
                 continue
-            if m := _LAB.match(line):
+            lab_label = _LAB_LABEL.match(line)
+            lab_text = lab_label.group(1).strip() if lab_label else line
+            if m := _LAB.match(lab_text):
                 test = m.group("test").strip()
                 known = any(k in test.lower() for k in _KNOWN_TESTS)
                 if m.group("range") or (known and m.group("unit")):
@@ -270,6 +285,8 @@ def extract_structured(pages: list[dict]) -> list[dict]:
                             0.8,
                         )
                     )
+            elif lab_label:
+                add(_candidate("lab_test", lab_text, number, conf, line, weight=0.8))
     if not any(item["field"] in EVENT_FIELDS for item in out):
         for page in pages:
             for line_info in page["lines"]:

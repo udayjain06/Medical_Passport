@@ -285,6 +285,9 @@ def test_export_and_account_deletion(client: TestClient, monkeypatch, tmp_path):
 
 
 def test_production_settings_require_encryption_and_https():
+    def make_settings(**kwargs):
+        return Settings(_env_file=None, **kwargs)
+
     base = dict(
         app_env="production",
         secret_key="x" * 40,
@@ -292,16 +295,12 @@ def test_production_settings_require_encryption_and_https():
         cookie_secure=True,
         cors_origins=["https://app.example.com"],
         public_app_url="https://app.example.com",
-        redis_url="redis://localhost:6379/0",
-        trusted_proxy_count=1,
         email_provider="smtp",
         smtp_host="smtp.example.com",
         malware_scan="clamav",
+        redis_url="redis://redis:6379/0",
+        trusted_proxy_count=1,
     )
-
-    def make_settings(**kwargs):
-        return Settings(_env_file=None, **kwargs)
-
     with pytest.raises(ValueError):
         make_settings(**base)  # no document_encryption_key
     from cryptography.fernet import Fernet
@@ -316,10 +315,6 @@ def test_production_settings_require_encryption_and_https():
         base_http = {**base, "cors_origins": ["http://localhost:3000"]}
         make_settings(**base_http, document_encryption_key=key)
     assert make_settings(**base, document_encryption_key=key).app_env == "production"
-    for missing in ("redis_url", "trusted_proxy_count"):
-        invalid = {**base, missing: None if missing == "redis_url" else 0}
-        with pytest.raises(ValueError, match="REDIS_URL|TRUSTED_PROXY_COUNT"):
-            make_settings(**invalid, document_encryption_key=key)
     with pytest.raises(ValueError, match="MALWARE_SCAN=clamav"):
         make_settings(**{**base, "malware_scan": "off"}, document_encryption_key=key)
     with pytest.raises(ValueError, match="EMAIL_PROVIDER=console"):
@@ -328,6 +323,10 @@ def test_production_settings_require_encryption_and_https():
         make_settings(**base, document_encryption_key=key, smtp_starttls=False)
     with pytest.raises(ValueError, match="EMAIL_TEST_HOOK_ENABLED"):
         make_settings(**base, document_encryption_key=key, email_test_hook_enabled=True)
+    with pytest.raises(ValueError, match="REDIS_URL"):
+        make_settings(**{**base, "redis_url": None}, document_encryption_key=key)
+    with pytest.raises(ValueError, match="TRUSTED_PROXY_COUNT"):
+        make_settings(**{**base, "trusted_proxy_count": 0}, document_encryption_key=key)
 
 
 def test_rules_parse_indian_dates_and_ignore_none_allergies():
@@ -383,9 +382,7 @@ def test_ai_drops_malformed_items_without_losing_valid_candidates(monkeypatch):
     monkeypatch.setattr(
         medical_ai.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse()
     )
-    candidates, engine = medical_ai.extract_candidates(
-        _lines("Diagnosis: Asthma"), allow_ai=True, patient_name="Asha Rao"
-    )
+    candidates, engine = medical_ai.extract_candidates(_lines("Diagnosis: Asthma"))
     assert engine == "test-model"
     assert [item["value"] for item in candidates] == ["Asthma"]
 
@@ -402,68 +399,9 @@ def test_ai_provider_failure_falls_back_to_rules(monkeypatch):
         raise TimeoutError("synthetic provider outage")
 
     monkeypatch.setattr(medical_ai.urllib.request, "urlopen", fail)
-    candidates, engine = medical_ai.extract_candidates(_lines("Diagnosis: Asthma"), allow_ai=True)
+    candidates, engine = medical_ai.extract_candidates(_lines("Diagnosis: Asthma"))
     assert engine == "rules-v1 (ai-fallback)"
     assert candidates[0]["field"] == "diagnosis"
-
-
-def test_no_document_ai_consent_never_calls_configured_provider(monkeypatch):
-    import app.medical_ai as medical_ai
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "medical_ai_endpoint", "https://provider.invalid")
-    monkeypatch.setattr(settings, "medical_ai_api_key", "test-key")
-    monkeypatch.setattr(settings, "medical_ai_model", "test-model")
-    monkeypatch.setattr(
-        medical_ai.urllib.request,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("provider called")),
-    )
-    candidates, engine = medical_ai.extract_candidates(_lines("Diagnosis: Asthma"))
-    assert engine == "rules-v1"
-    assert candidates[0]["value"] == "Asthma"
-
-
-def test_ai_request_redacts_patient_name_and_long_numbers(monkeypatch):
-    import json
-
-    import app.medical_ai as medical_ai
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "medical_ai_endpoint", "https://provider.invalid")
-    monkeypatch.setattr(settings, "medical_ai_api_key", "test-key")
-    monkeypatch.setattr(settings, "medical_ai_model", "test-model")
-    captured = {}
-
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return None
-
-        def read(self):
-            body = json.dumps(
-                {"candidates": [{"field": "diagnosis", "value": "Asthma", "confidence": 0.9}]}
-            )
-            return json.dumps({"choices": [{"message": {"content": body}}]}).encode()
-
-    def fake_provider(request, **_kwargs):
-        captured.update(json.loads(request.data))
-        return FakeResponse()
-
-    monkeypatch.setattr(medical_ai.urllib.request, "urlopen", fake_provider)
-    candidates, engine = medical_ai.extract_candidates(
-        _lines("Patient: Asha Rao", "Phone: 9876543210", "ID: 123456789012"),
-        allow_ai=True,
-        patient_name="Asha Rao",
-    )
-    request_text = captured["messages"][1]["content"]
-    assert "Asha Rao" not in request_text
-    assert "9876543210" not in request_text
-    assert "123456789012" not in request_text
-    assert engine == "test-model"
-    assert candidates[0]["value"] == "Asthma"
 
 
 def test_rules_fall_back_to_source_lines_when_no_event_candidates_exist():

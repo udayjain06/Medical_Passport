@@ -84,22 +84,30 @@ def _issue_share(
     token = secrets.token_urlsafe(32)
     share = EmergencyShare(
         profile_id=profile.id,
+        created_by_user_id=user.id,
         token_hash=hashlib.sha256(token.encode()).hexdigest(),
         shared_fields=fields,
         expires_at=datetime.now(UTC) + timedelta(hours=hours),
         label=(label or "").strip() or None,
     )
     db.add(share)
-    active_consent = db.scalar(
-        select(ConsentRecord.id).where(
-            ConsentRecord.user_id == user.id,
-            ConsentRecord.purpose == "emergency_sharing",
-            ConsentRecord.withdrawn_at.is_(None),
+    db.flush()
+    consent = ConsentRecord(
+        user_id=user.id,
+        purpose="emergency_sharing",
+        version="v1",
+        granted_at=datetime.now(UTC),
+    )
+    db.add(consent)
+    db.flush()
+    db.add(
+        AuditEvent(
+            user_id=user.id,
+            action="consent.granted",
+            target_type="consent",
+            target_id=consent.id,
         )
     )
-    if active_consent is None:
-        db.add(ConsentRecord(user_id=user.id, purpose="emergency_sharing", version="v1"))
-    db.flush()
     db.add(
         AuditEvent(
             user_id=user.id, action=action, target_type="emergency_share", target_id=share.id

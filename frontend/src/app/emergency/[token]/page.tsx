@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { LanguageSwitcher } from "@/components/language-switcher";
+import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 
 type Contact = { full_name: string; phone_number: string };
 type DocFact = { text: string; record_date: string | null };
@@ -21,16 +21,18 @@ type Data = {
 };
 
 function Section({ title, hi, tone, children }: { title: string; hi: string; tone?: "alert"; children: React.ReactNode }) {
+  const { language } = useLanguage();
   return (
     <article className={tone === "alert" ? "emergency-block emergency-alert" : "emergency-block"}>
-      <h2>{title} <span lang="hi">/ {hi}</span></h2>
+      <h2>{language === "hi" ? hi : title} <span lang={language === "hi" ? "en" : "hi"}>/ {language === "hi" ? title : hi}</span></h2>
       {children}
     </article>
   );
 }
 
 function Facts({ typed, docs, dated }: { typed?: string | null; docs?: DocFact[]; dated?: boolean }) {
-  if (!typed && !docs?.length) return <p className="emergency-empty">Not recorded</p>;
+  const { language, t } = useLanguage();
+  if (!typed && !docs?.length) return <p className="emergency-empty">{t("notRecorded")}</p>;
   return (
     <>
       {typed && <p className="emergency-value">{typed}</p>}
@@ -38,8 +40,8 @@ function Facts({ typed, docs, dated }: { typed?: string | null; docs?: DocFact[]
         <p className="emergency-value" key={i}>
           {d.text}
           <small>
-            {" "}From a medical record{d.record_date ? ` dated ${d.record_date}` : ""}, confirmed by the patient
-            {dated ? ". May have changed; verify." : "."}
+            {language === "hi" ? " " : " From a medical record"}{d.record_date ? ` ${language === "hi" ? "दिनांक" : "dated"} ${d.record_date}` : ""}{language === "hi" ? ", रोगी द्वारा पुष्टि की गई" : ", confirmed by the patient"}
+            {dated ? (language === "hi" ? "। बदल सकती है; पुष्टि करें।" : ". May have changed; verify.") : language === "hi" ? "।" : "."}
           </small>
         </p>
       ))}
@@ -48,6 +50,7 @@ function Facts({ typed, docs, dated }: { typed?: string | null; docs?: DocFact[]
 }
 
 export default function PublicEmergency() {
+  const { language, t } = useLanguage();
   const { token } = useParams<{ token: string }>();
   const [result, setResult] = useState<{ token: string; data: Data | null; error: string }>({
     token: "",
@@ -86,25 +89,25 @@ export default function PublicEmergency() {
   if (error) {
     return (
       <main className="public-emergency">
-        <LanguageSwitcher />
         <section className="panel">
-          <h1>Link unavailable</h1>
-          <p>This emergency link may have expired or been revoked. If this is an emergency, call 112.</p>
+          <LanguageSwitcher />
+          <h1>{t("linkUnavailable")}</h1>
+          <p>{t("emergencyExpired")}</p>
         </section>
       </main>
     );
   }
-  if (!data) return <main className="public-emergency"><LanguageSwitcher /><p role="status">Loading emergency information…</p></main>;
+  if (!data) return <main className="public-emergency"><LanguageSwitcher /><p role="status">{t("loadingEmergency")}</p></main>;
 
   const has = (k: keyof Data) => k in data;
   return (
     <main className="public-emergency">
       <LanguageSwitcher />
-      <p className="eyebrow">Medical Passport · Emergency summary / आपातकालीन सारांश</p>
+      <p className="eyebrow">Medical Passport · {language === "hi" ? "आपातकालीन सारांश" : "Emergency summary"}</p>
       <h1>{data.full_name ?? "Emergency medical information"}</h1>
       {has("blood_group") && (
         <Section title="Blood group" hi="रक्त समूह">
-          <p className="emergency-big">{data.blood_group || "Not recorded"}</p>
+          <p className="emergency-big">{data.blood_group || t("notRecorded")}</p>
         </Section>
       )}
       {(has("known_allergies") || has("document_allergies")) && (
@@ -124,17 +127,17 @@ export default function PublicEmergency() {
       )}
       {data.emergency_contacts && (
         <Section title="Emergency contacts" hi="आपातकालीन संपर्क">
-          {data.emergency_contacts.length === 0 && <p className="emergency-empty">Not recorded</p>}
+          {data.emergency_contacts.length === 0 && <p className="emergency-empty">{t("notRecorded")}</p>}
           {data.emergency_contacts.map((c, i) => (
             <a className="call-button" key={i} href={`tel:${c.phone_number}`}>
-              Call {c.full_name} · {c.phone_number}
+              {language === "hi" ? `${c.full_name} को कॉल करें · ${c.phone_number}` : `Call ${c.full_name} · ${c.phone_number}`}
             </a>
           ))}
         </Section>
       )}
       <p className="field-hint">
-        Patient-reported information, not verified by a clinician. Confirm with the patient or care team. Last updated{" "}
-        {new Date(data.updated_at).toLocaleString()}. Emergency services: 112.
+        {t("patientReportedDisclaimer")} {language === "hi" ? "अंतिम अपडेट" : "Last updated"}{" "}
+        {new Date(data.updated_at).toLocaleString(language === "hi" ? "hi-IN" : "en-IN")}.
       </p>
     </main>
   );

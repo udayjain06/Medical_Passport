@@ -25,10 +25,11 @@ Copy `.env.example` to `.env` and replace every example value. Compose reads thi
 | `EMAIL_PROVIDER` | Yes | `smtp` or `resend` in production; console delivery is development only. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS`, `SMTP_USE_SSL`, `EMAIL_FROM` | For SMTP | Configure authenticated TLS delivery. Use either STARTTLS or implicit TLS. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | For Resend | Configure the Resend API provider and a verified sender. |
+| `REDIS_URL` | Yes | Shared rate-limit store; production startup fails without it. Compose defaults to its internal Redis service. Auth routes fail closed when Redis is unavailable. |
 | `MALWARE_SCAN` | `clamav` | Production requires scanning. Compose points the API at the ClamAV service. |
 | `CLAMAV_HOST`, `CLAMAV_PORT`, `CLAMAV_TIMEOUT_SECONDS` | Yes | Scanner service address and timeout; Compose supplies the internal host and port. |
-| `TRUSTED_PROXY_COUNT` | Yes | Production requires at least `1` trusted proxy hop appending `X-Forwarded-For`. Compose defaults to `1` because the API is called through Next.js; local direct access may use `0`. |
-| `REDIS_URL` | Production | Required shared rate-limit store. Compose connects the API to its Redis service. |
+| `TRUSTED_PROXY_COUNT` | Yes | Production requires at least one trusted proxy hop appending `X-Forwarded-For`. Compose defaults to `1` because the API is called through Next.js; direct local development can use `0`. |
+| `DOCUMENT_PROCESS_RATE_LIMIT_COUNT`, `DOCUMENT_PROCESS_RATE_LIMIT_WINDOW_SECONDS` | Optional | Per-user OCR processing limit; defaults to 10 attempts per 10 minutes. |
 | `REQUEST_MAX_SIZE_BYTES`, `DOCUMENT_MAX_SIZE_BYTES` | Optional | Request and file upload limits. |
 | `EMERGENCY_MAX_HOURS`, `EMERGENCY_ACCESS_RATE_PER_MINUTE` | Optional | Emergency-share expiry and public endpoint rate limit. |
 | `MEDICAL_AI_ENDPOINT`, `MEDICAL_AI_API_KEY`, `MEDICAL_AI_MODEL` | Optional | External extraction provider. Configure only after reviewing patient consent, data handling, and provider terms. |
@@ -74,15 +75,9 @@ docker compose up -d --no-build
 
 The API service should be private behind the web app and the approved TLS proxy. Do not use sample passwords, console email, HTTP, or empty encryption keys in a pilot. Verify `/readyz`, email verification/reset delivery, upload scanning, and an encrypted document read before enabling real users.
 
-The installable PWA service worker caches only static shell assets. It bypasses API, document, and emergency routes. An optional emergency card is encrypted with a user PIN in browser IndexedDB; it is local to the device, has no remote wipe, and is exposed if an attacker can unlock that browser and knows the PIN. Users must opt in and can remove it in the app. This feature is a convenience for device loss of connectivity, not a backup or a substitute for carrying current emergency information.
-
-The application records consent for its stated purposes, including AI processing and emergency sharing. Configure an external medical AI provider only after reviewing its data handling and obtaining appropriate consent. The user interface includes English/Hindi switching, but the Hindi translation is partial. Terms and privacy content are product placeholders and require jurisdiction-specific legal review before a pilot. The automated axe checks cover selected screens and do not establish WCAG conformance.
-
-ABDM connectivity is disabled. No `ABDM_CLIENT_ID`, `ABDM_CLIENT_SECRET`, or `ABDM_BASE_URL` is configured in this environment; sandbox onboarding, credentials, authorization, and API validation remain prerequisites. The FHIR download is a local R4-aligned export and is not an ABDM/NHCX connection or certification.
-
 ## Reverse proxy and client IP
 
-Set `TRUSTED_PROXY_COUNT` to the number of trusted proxies that append `X-Forwarded-For` before the request reaches the API. Production requires at least one trusted hop and a configured `REDIS_URL`. The API must not be directly reachable from untrusted clients when proxy trust is enabled. With the supplied topology, the API trusts only the Next.js hop (`1`). If a load balancer sits in front of Next.js, ensure Next.js itself overwrites/appends the client chain safely; do not blindly increase the API trust count. With no verified proxy chain in local development, set `TRUSTED_PROXY_COUNT=0` so socket peer IP is used. Request logs intentionally store request IDs and routes but never full IP addresses, credentials, tokens, or document contents.
+Set `TRUSTED_PROXY_COUNT` to the number of trusted proxies that append `X-Forwarded-For` before the request reaches the API. Production requires at least one verified hop, and the API must not be directly reachable from untrusted clients. With the supplied topology, the API trusts only the Next.js hop (`1`). If a load balancer sits in front of Next.js, ensure Next.js itself overwrites/appends the client chain safely; do not blindly increase the API trust count. Local direct development may use `TRUSTED_PROXY_COUNT=0` so the socket peer IP is used. Request logs intentionally store request IDs and routes but never full IP addresses, credentials, tokens, or document contents.
 
 ## Migrations
 
@@ -90,7 +85,7 @@ Back up PostgreSQL before every schema change. Review the migration file, apply 
 
 ## Backups and restore test
 
-Follow the concise [backup and restore runbook](../scripts/backup.md) for PostgreSQL, document-volume, key backup, and rehearsal steps.
+For the operator checklist, including coordinated database, document-volume, and key backups, see [the backup runbook](../scripts/backup.md).
 
 Back up PostgreSQL and the `document_data` volume together. A database-only snapshot is insufficient because document metadata refers to encrypted files in that volume. Quiesce writes or use a coordinated volume/database snapshot so the two copies describe the same point in time. Store backups and the corresponding encryption-key version separately under access control. Never place backup files in the web root or a public bucket.
 
@@ -103,6 +98,12 @@ docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES
 Back up the named `document_data` Docker volume with the organization’s volume-snapshot tooling. If using a tar archive, mount that volume read-only into a trusted backup job and write the archive to an encrypted destination. Record the deployment revision and key-set identifier with the backup, never the keys themselves.
 
 At least once before a pilot and on the organization’s schedule thereafter, restore both snapshots to an isolated network with outbound mail and public access disabled. Apply no schema changes until the restored database and volume are paired. Verify migrations, `/readyz`, profile and timeline metadata, and read/decrypt a designated synthetic document. Record the recovery time and outcome; then destroy the isolated copy according to the retention policy.
+
+## Verification status and human approvals
+
+The automated project checks use synthetic records, a local SQLite database, and headless Chromium. They do not verify external delivery or deployed-service behavior. Before a supervised pilot, an operator must validate the actual PostgreSQL migration and restore path, Redis-backed rate limits, ClamAV scanning, SMTP/Resend delivery, production encryption and key recovery, HTTPS/proxy trust, and the deployed `/healthz` and `/readyz` endpoints. Docker Compose configuration and images also need to be exercised on a host with Docker available.
+
+Human owners must complete legal/privacy review of the placeholder notices, clinical review of extraction and emergency presentation, independent security review, and a restore rehearsal. Confirm the legal authority process for dependent profiles; the checkbox in the app is only an attestation. Physical Android/iOS installability and screen-reader use still need device testing. The ABDM sandbox application and any official credentials/approvals are pending; the connector is disabled and no link workflow is verified. These gates are not represented as completed by passing automated tests.
 
 ## Incident checklist
 

@@ -15,11 +15,10 @@ from app.routers import (
     auth,
     documents,
     emergency,
+    export,
     extraction,
     family,
-    fhir_export,
     health,
-    privacy,
     profile,
     timeline,
 )
@@ -27,17 +26,16 @@ from app.routers import (
 configure_logging()
 logger = logging.getLogger(__name__)
 
-production = settings.app_env == "production"
 app = FastAPI(
     title="Medical Passport API",
     version="0.1.0",
+    docs_url=None if settings.app_env == "production" else "/docs",
+    redoc_url=None if settings.app_env == "production" else "/redoc",
+    openapi_url=None if settings.app_env == "production" else "/openapi.json",
     description=(
         "Private patient profile and authentication API. "
         "Medical history features are being built incrementally."
     ),
-    docs_url=None if production else "/docs",
-    redoc_url=None if production else "/redoc",
-    openapi_url=None if production else "/openapi.json",
 )
 
 app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.request_max_size_bytes)
@@ -117,11 +115,10 @@ async def safe_validation_error(request: Request, exc: RequestValidationError) -
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(profile.router)
-app.include_router(privacy.router)
 app.include_router(documents.router)
 app.include_router(extraction.router)
-app.include_router(fhir_export.router)
 app.include_router(emergency.router)
+app.include_router(export.router)
 app.include_router(timeline.router)
 app.include_router(family.router)
 app.include_router(abha.router)

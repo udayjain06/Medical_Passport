@@ -1,12 +1,20 @@
 {
+  "id": "/",
   "name": "Medical Passport",
   "short_name": "Med Passport",
-  "description": "A private, patient-controlled health record tool.",
-  "start_url": "/",
+  "description": "Your patient-controlled medical history and emergency card.",
+  "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f5f7f4",
-  "theme_color": "#174b36",
+  "background_color": "#f4f7f4",
+  "theme_color": "#145b42",
+  "lang": "en-IN",
   "icons": [
-    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "/icons/medical-passport.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
   ]
 }

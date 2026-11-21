@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, apiFetch, apiRequest } from "@/lib/api";
 import { ExtractionReview } from "@/components/extraction-review";
@@ -14,6 +15,7 @@ export default function DocumentsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Document | null>(null);
@@ -22,19 +24,38 @@ export default function DocumentsPage() {
   const [canEdit, setCanEdit] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const query = new URLSearchParams();
       if (search) query.set("search", search);
       if (category) query.set("category", category);
       setDocs(await apiRequest<Document[]>(`/documents?${query}`));
       setError("");
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not load documents."); }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not load documents.");
+    } finally {
+      setLoading(false);
+    }
   }, [search, category]);
   useEffect(() => {
+    let active = true;
     const query = new URLSearchParams();
     if (search) query.set("search", search);
     if (category) query.set("category", category);
-    apiRequest<Document[]>(`/documents?${query}`).then(setDocs).catch(e => setError(e instanceof ApiError ? e.message : "Could not load documents."));
+    apiRequest<Document[]>(`/documents?${query}`)
+      .then((documents) => {
+        if (active) {
+          setDocs(documents);
+          setError("");
+        }
+      })
+      .catch((e: unknown) => {
+        if (active) setError(e instanceof ApiError ? e.message : "Could not load documents.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, [search, category]);
   useEffect(() => {
     apiRequest<Profile[]>("/profiles").then((profiles) => {
@@ -96,20 +117,31 @@ export default function DocumentsPage() {
 
   return <main className="page-wrap vault-wrap">
     <header className="page-heading"><p className="eyebrow">Your private records</p><h1>Medical document vault</h1><p>Keep prescriptions, reports, and summaries together. Files are private to your account.</p></header>
+    {error && <p className="form-error" role="alert">{error} <button type="button" className="text-button" onClick={() => void load()}>Retry</button></p>}
     {canEdit ? <section className="vault-upload" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); upload(e.dataTransfer.files[0]); }}>
       <span className="upload-icon" aria-hidden="true">↥</span><h2>Add a document</h2><p>PDF, JPG, or PNG · up to 10 MB</p>
       <input ref={input} hidden type="file" accept="application/pdf,image/jpeg,image/png" onChange={e => upload(e.target.files?.[0])}/>
       <button type="button" className="button" disabled={busy} onClick={() => input.current?.click()}>{busy ? "Uploading…" : "Choose a file"}</button>
-      {busy && <progress className="upload-progress" value={progress} max={100} aria-label="Upload progress"/>}{error && <p className="form-error" role="alert">{error} <button className="text-button" onClick={() => void load()}>Retry</button></p>}
+      {busy && <progress className="upload-progress" value={progress} max={100} aria-label="Upload progress"/>}
     </section> : <p className="verification-note">This profile is read-only for your account. You can view and download its records.</p>}
-    <section className="vault-list"><div className="vault-toolbar"><div><h2>Your documents</h2><p>{docs.length} {docs.length === 1 ? "record" : "records"}</p></div><div className="vault-filters"><input aria-label="Search documents" placeholder="Search filename" value={search} onChange={e => setSearch(e.target.value)}/><select aria-label="Filter by category" value={category} onChange={e => setCategory(e.target.value)}><option value="">All categories</option>{categories.map(item => <option key={item}>{item}</option>)}</select></div></div>
-      {docs.length === 0 ? <div className="empty-state"><strong>{error ? "Documents could not be loaded" : "Your vault is ready"}</strong><p>{error ? "Retry the request, or upload a document to begin." : "Upload your first medical record to see it here."}</p>{error && <button className="button button-secondary button-small" onClick={() => void load()}>Retry</button>}</div> : <div className="document-grid">{docs.map(doc => <article className="document-card" key={doc.id}><button type="button" className="document-open" onClick={() => {setSelected(doc);}}><span className="document-mark">{doc.file_format.toUpperCase()}</span><strong>{doc.original_filename}</strong><small>{doc.category} · {(doc.file_size / 1024 / 1024).toFixed(2)} MB</small></button><button className="text-button" onClick={() => {setSelected(doc);}}>Details</button></article>)}</div>}
+    <section className="vault-list"><div className="vault-toolbar"><div><h2>Your documents</h2><p>{docs.length} {docs.length === 1 ? "record" : "records"}</p></div><div className="vault-filters"><input aria-label="Search documents" placeholder="Search filename" value={search} onChange={e => { setLoading(true); setSearch(e.target.value); }}/><select aria-label="Filter by category" value={category} onChange={e => { setLoading(true); setCategory(e.target.value); }}><option value="">All categories</option>{categories.map(item => <option key={item}>{item}</option>)}</select></div></div>
+      {loading ? <p className="loading" role="status">Loading documents…</p> : docs.length === 0 ? <div className="empty-state"><strong>{error ? "Documents could not be loaded" : "Your vault is ready"}</strong><p>{error ? "Retry the request, or upload a document to begin." : "Upload your first medical record to see it here."}</p>{error && <button type="button" className="button button-secondary button-small" onClick={() => void load()}>Retry</button>}</div> : <div className="document-grid">{docs.map(doc => <article className="document-card" key={doc.id}><button type="button" className="document-open" onClick={() => {setSelected(doc);}}><span className="document-mark">{doc.file_format.toUpperCase()}</span><strong>{doc.original_filename}</strong><small>{doc.category} · {(doc.file_size / 1024 / 1024).toFixed(2)} MB</small></button><button type="button" className="text-button" onClick={() => {setSelected(doc);}}>Details</button></article>)}</div>}
     </section>
     {selected && <DocumentSheet onDismiss={() => setSelected(null)}>
       <header className="sheet-content-header"><div><p className="eyebrow">Document details</p><h2>{selected.original_filename}</h2></div></header>
       <div className="field"><label htmlFor="doc-category">Category</label><select id="doc-category" disabled={!selected.can_edit} value={selected.category} onChange={e => void update(selected, e.target.value)}>{categories.map(item => <option key={item}>{item}</option>)}</select></div>
       <p className="field-hint">Uploaded {new Date(selected.created_at).toLocaleDateString()} · Processing: {selected.processing_status}</p>
-      {preview?.id === selected.id ? <><p><a href={preview.url} target="_blank" rel="noopener noreferrer">Open document in a new tab</a></p><iframe className="document-preview" title={`Preview ${selected.original_filename}`} aria-hidden="true" src={preview.url}/></> : <p className={previewError?.id === selected.id ? "form-error" : "loading"} role={previewError?.id === selected.id ? "alert" : "status"}>{previewError?.id === selected.id ? previewError.message : "Loading document preview…"}</p>}
+      {preview?.id === selected.id ? (
+        selected.file_format.toLowerCase() === "pdf" ? (
+          <iframe className="document-preview" title={`Preview ${selected.original_filename}`} src={preview.url} />
+        ) : (
+          <Image unoptimized width={1200} height={800} className="document-preview document-image-preview" src={preview.url} alt={`Preview of ${selected.original_filename}`} />
+        )
+      ) : (
+        <p className={previewError?.id === selected.id ? "form-error" : "loading"} role={previewError?.id === selected.id ? "alert" : "status"}>
+          {previewError?.id === selected.id ? previewError.message : "Loading document preview…"}
+        </p>
+      )}
       <ExtractionReview key={selected.id} documentId={selected.id} canEdit={selected.can_edit} processingStatus={selected.processing_status} onChanged={() => void load()} />
       {selected.can_edit && <button className="button button-danger" onClick={() => void remove(selected)}>Delete document</button>}
     </DocumentSheet>}

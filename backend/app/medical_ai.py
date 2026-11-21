@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.request
+from copy import deepcopy
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -34,6 +35,40 @@ ALLOWED_FIELDS = {
     "abnormal_indicator",
 }
 
+_NUMBER_LIKE = re.compile(r"(?<!\d)\+?(?:\d[ \t().-]*){9,}\d(?!\d)")
+
+
+def provider_configured() -> bool:
+    return bool(
+        settings.medical_ai_endpoint and settings.medical_ai_api_key and settings.medical_ai_model
+    )
+
+
+def redact_for_provider(pages: list[dict], patient_name: str | None) -> list[dict]:
+    """Return sanitized OCR page data without changing the local source text."""
+    safe_pages = deepcopy(pages)
+    name_pattern = None
+    if patient_name and patient_name.strip():
+        pattern = re.escape(patient_name.strip())
+        pattern = re.sub(r"\\\s+", r"\\s+", pattern)
+        name_pattern = re.compile(rf"(?<!\w){pattern}(?!\w)", re.IGNORECASE)
+
+    def redact_text(value: str) -> str:
+        if name_pattern:
+            value = name_pattern.sub("[REDACTED NAME]", value)
+
+        def redact_number(match: re.Match[str]) -> str:
+            digits = re.sub(r"\D", "", match.group())
+            return "[REDACTED NUMBER]" if len(digits) >= 10 else match.group()
+
+        return _NUMBER_LIKE.sub(redact_number, value)
+
+    for page in safe_pages:
+        for line in page.get("lines", []):
+            if isinstance(line, dict) and isinstance(line.get("text"), str):
+                line["text"] = redact_text(line["text"])
+    return safe_pages
+
 
 class CandidateFact(BaseModel):
     field: str = Field(min_length=1, max_length=40)
@@ -59,17 +94,9 @@ class CandidateFact(BaseModel):
         return value
 
 
-def extract_candidates(
-    pages: list[dict], *, allow_ai: bool = False, patient_name: str | None = None
-) -> tuple[list[dict], str]:
-    if not (
-        allow_ai
-        and settings.medical_ai_endpoint
-        and settings.medical_ai_api_key
-        and settings.medical_ai_model
-    ):
+def extract_candidates(pages: list[dict], allow_ai: bool = True) -> tuple[list[dict], str]:
+    if not allow_ai or not provider_configured():
         return _rules(pages), "rules-v1"
-    redacted_pages = redact_patient_identifiers(pages, patient_name)
     prompt = {
         "model": settings.medical_ai_model,
         "temperature": 0,
@@ -82,7 +109,7 @@ def extract_candidates(
                     "original_value,normalized_value,confidence}]}. Confidence is 0..1."
                 ),
             },
-            {"role": "user", "content": json.dumps(redacted_pages, ensure_ascii=False)},
+            {"role": "user", "content": json.dumps(pages, ensure_ascii=False)},
         ],
         "response_format": {"type": "json_object"},
     }
@@ -90,28 +117,6 @@ def extract_candidates(
         return _ai_candidates(prompt), settings.medical_ai_model
     except Exception:  # provider outage or malformed output: fall back to offline rules
         return _rules(pages), "rules-v1 (ai-fallback)"
-
-
-def redact_patient_identifiers(pages: list[dict], patient_name: str | None) -> list[dict]:
-    """Return OCR pages with the patient's name and long number sequences removed."""
-    name_pattern = (
-        re.compile(re.escape(patient_name.strip()), re.IGNORECASE) if patient_name else None
-    )
-    number_pattern = re.compile(r"(?<!\w)(?:\+?\d[\s().-]*){8,16}(?!\w)")
-    redacted = []
-    for page in pages:
-        clean_page = {**page}
-        lines = []
-        for line in page.get("lines", []):
-            clean_line = {**line}
-            text = str(clean_line.get("text", ""))
-            if name_pattern:
-                text = name_pattern.sub("[REDACTED]", text)
-            clean_line["text"] = number_pattern.sub("[REDACTED]", text)
-            lines.append(clean_line)
-        clean_page["lines"] = lines
-        redacted.append(clean_page)
-    return redacted
 
 
 def _rules(pages: list[dict]) -> list[dict]:

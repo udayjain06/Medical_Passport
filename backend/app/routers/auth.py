@@ -21,6 +21,7 @@ from app.email import (
     provide_email_provider,
     take_test_email_link,
 )
+from app.medical_ai import provider_configured
 from app.models import (
     AuditEvent,
     ConsentRecord,
@@ -38,6 +39,12 @@ from app.security import COOKIE_NAME, create_session_token, hash_password, verif
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 logger = logging.getLogger(__name__)
 _DUMMY_HASH = hash_password("not-a-real-user-password")
+CONSENT_VERSION = "v1"
+
+
+@router.get("/ai-capabilities")
+def ai_capabilities(user: User = Depends(get_current_user)) -> dict[str, bool]:
+    return {"external_ai_configured": provider_configured()}
 
 
 def _rate_limit(request: Request, action: str) -> None:
@@ -93,8 +100,6 @@ def register(
     db: Session = Depends(get_db),
 ) -> AuthResponse:
     _rate_limit(request, "register")
-    if not payload.terms_consent or not payload.privacy_consent:
-        raise HTTPException(422, "Consent to the terms and privacy notice is required")
     email = str(payload.email).strip().lower()
     user = User(email=email, password_hash=hash_password(payload.password))
     user.profiles.append(PatientProfile(full_name=payload.full_name, is_primary=True))
@@ -106,12 +111,23 @@ def register(
                 user_id=user.id, action="account.registered", target_type="user", target_id=user.id
             )
         )
-        db.add_all(
-            [
-                ConsentRecord(user_id=user.id, purpose=purpose, version="v1")
-                for purpose in ("terms", "privacy")
-            ]
-        )
+        for purpose in ("terms", "privacy"):
+            record = ConsentRecord(
+                user_id=user.id,
+                purpose=purpose,
+                version=CONSENT_VERSION,
+                granted_at=datetime.now(UTC),
+            )
+            db.add(record)
+            db.flush()
+            db.add(
+                AuditEvent(
+                    user_id=user.id,
+                    action="consent.granted",
+                    target_type="consent",
+                    target_id=record.id,
+                )
+            )
         verification_token = issue_token(db, user.id, "email_verification", timedelta(hours=24))
         db.commit()
         db.refresh(user)
@@ -132,6 +148,97 @@ def register(
         ),
     )
     return AuthResponse(user=UserRead.model_validate(user))
+
+
+@router.get("/consents")
+def list_consents(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    records = db.scalars(
+        select(ConsentRecord)
+        .where(ConsentRecord.user_id == user.id)
+        .order_by(ConsentRecord.granted_at.desc(), ConsentRecord.purpose)
+    ).all()
+    return [
+        {
+            "id": str(record.id),
+            "purpose": record.purpose,
+            "version": record.version,
+            "granted_at": record.granted_at.isoformat(),
+            "withdrawn_at": record.withdrawn_at.isoformat() if record.withdrawn_at else None,
+        }
+        for record in records
+    ]
+
+
+@router.post("/consents/{purpose}/withdraw")
+def withdraw_consent(
+    purpose: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    if purpose in {"terms", "privacy"}:
+        raise HTTPException(
+            409,
+            "Terms and privacy records cannot be withdrawn here. "
+            "Delete your account to stop using the service.",
+        )
+    if purpose != "emergency_sharing":
+        raise HTTPException(404, "Consent purpose not found")
+
+    now = datetime.now(UTC)
+    active_records = db.scalars(
+        select(ConsentRecord).where(
+            ConsentRecord.user_id == user.id,
+            ConsentRecord.purpose == purpose,
+            ConsentRecord.withdrawn_at.is_(None),
+        )
+    ).all()
+    if not active_records:
+        raise HTTPException(409, "No active emergency-sharing consent exists")
+
+    for record in active_records:
+        record.withdrawn_at = now
+    shares = db.scalars(
+        select(EmergencyShare).where(
+            EmergencyShare.created_by_user_id == user.id,
+            EmergencyShare.revoked_at.is_(None),
+            EmergencyShare.expires_at > now,
+        )
+    ).all()
+    for share in shares:
+        share.revoked_at = now
+        db.add(
+            AuditEvent(
+                user_id=user.id,
+                action="emergency_share.revoked",
+                target_type="emergency_share",
+                target_id=share.id,
+            )
+        )
+    db.add(
+        AuditEvent(
+            user_id=user.id,
+            action="consent.withdrawn",
+            target_type="consent",
+            target_id=active_records[0].id,
+        )
+    )
+    db.commit()
+    return {"withdrawn_records": len(active_records), "revoked_links": len(shares)}
+
+
+@router.get("/audit-log")
+def list_audit_log(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    events = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.user_id == user.id)
+        .order_by(AuditEvent.created_at.desc())
+        .limit(100)
+    ).all()
+    return [{"time": event.created_at.isoformat(), "action": event.action} for event in events]
 
 
 @router.post("/login", response_model=AuthResponse)

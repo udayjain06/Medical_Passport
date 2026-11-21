@@ -8,14 +8,26 @@ import pypdfium2 as pdfium
 from PIL import Image
 from rapidocr_onnxruntime import RapidOCR
 
+_engine: RapidOCR | None = None
 Image.MAX_IMAGE_PIXELS = 20_000_000
 
 
-class OversizedImage(ValueError):
-    """Raised when an image exceeds the configured safe pixel limit."""
+class DocumentImageTooLargeError(ValueError):
+    """Raised when an uploaded raster image exceeds the OCR pixel limit."""
 
 
-_engine: RapidOCR | None = None
+def _safe_image(data: bytes) -> Image.Image:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as image:
+                pixel_limit = Image.MAX_IMAGE_PIXELS
+                if pixel_limit is not None and image.width * image.height > pixel_limit:
+                    raise DocumentImageTooLargeError
+                image.load()
+                return image.convert("RGB")
+    except (Image.DecompressionBombWarning, Image.DecompressionBombError):
+        raise DocumentImageTooLargeError from None
 
 
 def _ocr_engine() -> RapidOCR:
@@ -32,14 +44,7 @@ def extract_pages(data: bytes, file_format: str) -> list[dict]:
             raise ValueError("Documents over 20 pages need to be split before processing")
         images = [page.render(scale=1.5).to_pil().convert("RGB") for page in pdf]
     elif file_format in {"jpg", "png"}:
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", Image.DecompressionBombWarning)
-                with Image.open(io.BytesIO(data)) as source:
-                    source.load()
-                    images = [source.convert("RGB")]
-        except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
-            raise OversizedImage("Image is too large to process safely") from exc
+        images = [_safe_image(data)]
     else:
         raise ValueError("Unsupported document format")
     output = []

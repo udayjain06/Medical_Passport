@@ -65,6 +65,22 @@ class AuthActionToken(Base):
 Index("ix_auth_action_tokens_user_purpose", AuthActionToken.user_id, AuthActionToken.purpose)
 
 
+class ConsentRecord(Base):
+    __tablename__ = "consent_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    purpose: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index("ix_consent_records_user_granted", ConsentRecord.user_id, ConsentRecord.granted_at)
+
+
 class PatientProfile(Base):
     __tablename__ = "patient_profiles"
 
@@ -131,24 +147,6 @@ class AuditEvent(Base):
 Index("ix_audit_events_user_created", AuditEvent.user_id, AuditEvent.created_at)
 
 
-class ConsentRecord(Base):
-    __tablename__ = "consent_records"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    purpose: Mapped[str] = mapped_column(String(40), nullable=False)
-    version: Mapped[str] = mapped_column(String(40), nullable=False)
-    granted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
-    )
-    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-Index("ix_consent_records_user_purpose", ConsentRecord.user_id, ConsentRecord.purpose)
-
-
 class MedicalDocument(Base):
     __tablename__ = "medical_documents"
 
@@ -189,6 +187,9 @@ class EmergencyShare(Base):
         ForeignKey("patient_profiles.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     shared_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -277,11 +278,12 @@ class DocumentExtraction(Base):
     ocr_text: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
     candidates: Mapped[list[dict]] = mapped_column(EncryptedJSON(), default=list, nullable=False)
     engine_version: Mapped[str] = mapped_column(String(100), nullable=False)
-    ai_consent_granted: Mapped[bool] = mapped_column(
+    ai_consent: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )
-    ai_provider_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    ai_provider_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_provider: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ai_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )

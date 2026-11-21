@@ -7,6 +7,7 @@
 - All profile reads and writes require authentication and are scoped to the authenticated user. Writes reject an absent or unapproved `Origin`.
 - CORS origins are explicit configuration. The Next.js server proxies API traffic so the browser uses a same-origin route.
 - Registration and login have in-process IP rate limits. Request validation responses omit submitted input. API responses use `Cache-Control: no-store`.
+- Registration returns `409` for an already-used email as a deliberate usability tradeoff; this can reveal that an account exists, so avoid exposing the response in public or shared contexts.
 - Audit rows record successful account/profile actions without storing request bodies or medical values.
 - Production configuration rejects a short/default secret and requires secure cookies, HTTPS CORS/public origins, PostgreSQL, a valid Fernet key set, non-console mail delivery, and ClamAV upload scanning.
 - Backend and Next.js responses set CSP with `frame-ancestors 'none'`, `nosniff`, Permissions-Policy, and no-store caching. Emergency pages and public emergency API responses also use `Referrer-Policy: no-referrer`.
@@ -29,12 +30,18 @@
 - Dependent profiles can be archived only by their owning account; the primary profile cannot be archived. Archival retains history, blocks further API selection, revokes active emergency shares, and removes sharing grants.
 - Timeline references include extraction/candidate IDs when known plus filename/checksum snapshots. Deleting a source document nulls the live foreign keys while retaining provenance. Timeline filters, edit/delete authorization, conflict groups, and uncertainty notes are server-enforced.
 - SQLite foreign-key enforcement is enabled on every SQLAlchemy SQLite connection and tested for valid, invalid, and cascading references.
-- Local OCR runs on the application server. If an AI endpoint, API key, and model are configured, OCR text is transmitted to that provider for structured candidate extraction. Configure only a provider approved for this health data; no AI provider is enabled by default.
+- Local OCR runs on the application server. A configured AI endpoint, API key, and model are required before the frontend offers a per-document, per-run consent checkbox. Without that explicit flag, the provider is not called and offline rules run. Before transmission, the patient's profile name and long number-like values are redacted; local OCR remains available to the patient. The extraction stores the consent flag/time and provider/model plus processing time. Configure only a provider approved for this health data; no AI provider is enabled by default.
 
 ## Limits and launch requirements
-
-Registration returns 409 for an existing email as a deliberate usability tradeoff.
 
 The development cookie defaults to `Secure=false` for localhost only. The in-memory rate limiter does not coordinate multiple workers; configure `REDIS_URL` for shared limits. Email verification and password recovery flows are implemented, but production delivery still requires SMTP or Resend credentials and operational verification. SQLite is a local convenience; production needs PostgreSQL, encrypted backups, TLS, managed secrets, monitoring, and tested restore procedures. OCR processing has no durable job queue; cloud object storage, audit review tooling, and external security testing are not implemented. OCR text and candidates are encrypted when document encryption keys are configured; production requires keys. ClamAV scanning is required in production and must be kept available. Account export omits file bytes and QR bearer tokens; account deletion requires the password and removes uploaded blobs and owned data. Dependent authority is based on a user attestation and is not independently verified.
 
 Use synthetic records during development. Before a real-user launch, obtain appropriate Indian legal, privacy, clinical, and security review. Do not represent the product as ABDM certified or clinically validated.
+
+## Verification boundaries and required review
+
+Targeted Playwright/axe checks cover login, signup, document review, emergency sharing and scan, and Data & privacy. They verify selected labels, focus order, modal keyboard handling, mobile viewport widths, and the listed WCAG 2.1 A/AA axe rules. This is not a full WCAG conformance assessment and does not include a screen-reader audit or physical-device testing.
+
+The automated end-to-end run uses synthetic profiles and local SQLite. It exercises the default no-AI state (no external AI consent control), patient review before timeline confirmation, emergency access/renewal/revocation and consent withdrawal, family isolation, FHIR/account downloads, and deletion. A configured provider is only invoked after the per-document consent flag; actual provider security, contractual terms, and clinical suitability need separate approval. FHIR output is labeled R4-aligned and is not ABDM/NHCX conformance.
+
+Live SMTP/Resend, Redis, ClamAV, PostgreSQL service operation, Docker/Compose, production proxy behavior, and backup/restore have not been proven by the local SQLite/browser checks. The ABDM sandbox application is pending; the connector stays disabled until current official documentation, credentials, approvals, and a live authorized workflow are available. Placeholder terms/privacy notices require legal review. Clinical validation, DPDP/legal compliance assessment, dependent-authority controls, accessibility review with assistive technology, and independent security review are human responsibilities and remain open. No production-readiness, regulatory-compliance, ABDM-certification, or clinical-validation claim is made.

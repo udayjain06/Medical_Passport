@@ -48,9 +48,7 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-medical_passport}:${POSTGRES_PASSWORD:-local-only-change-this-password}@postgres:5432/${POSTGRES_DB:-medical_passport}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      REDIS_URL: redis://redis:6379/0
-      DOCUMENT_PROCESS_RATE_LIMIT_COUNT: ${DOCUMENT_PROCESS_RATE_LIMIT_COUNT:-10}
-      DOCUMENT_PROCESS_RATE_LIMIT_WINDOW_SECONDS: ${DOCUMENT_PROCESS_RATE_LIMIT_WINDOW_SECONDS:-600}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DOCUMENT_STORAGE_PATH: /data/documents
       DOCUMENT_ENCRYPTION_KEYS: ${DOCUMENT_ENCRYPTION_KEYS:-[]}
       MALWARE_SCAN: clamav

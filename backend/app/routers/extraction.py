@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,8 +12,13 @@ from app import document_storage
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.extraction import OversizedImage, extract_pages
-from app.medical_ai import ALLOWED_FIELDS, extract_candidates
+from app.extraction import DocumentImageTooLargeError, extract_pages
+from app.medical_ai import (
+    ALLOWED_FIELDS,
+    extract_candidates,
+    provider_configured,
+    redact_for_provider,
+)
 from app.models import (
     AuditEvent,
     DocumentExtraction,
@@ -63,9 +68,10 @@ def _serialize(extraction: DocumentExtraction, db: Session | None = None, **extr
         "ocr_text": extraction.ocr_text,
         "candidates": extraction.candidates,
         "engine_version": extraction.engine_version,
-        "ai_consent_granted": extraction.ai_consent_granted,
-        "ai_provider_name": extraction.ai_provider_name,
-        "ai_provider_at": extraction.ai_provider_at,
+        "ai_consent": extraction.ai_consent,
+        "ai_consent_at": extraction.ai_consent_at,
+        "ai_provider": extraction.ai_provider,
+        "ai_processed_at": extraction.ai_processed_at,
         "created_at": extraction.created_at,
         "updated_at": extraction.updated_at,
         "warnings": [],
@@ -109,24 +115,13 @@ def _get_extraction(db: Session, doc: MedicalDocument) -> DocumentExtraction:
 @router.post("/{document_id}/process")
 def process_document(
     document_id: uuid.UUID,
-    payload: ProcessPayload = Body(default=ProcessPayload()),
+    payload: ProcessPayload = ProcessPayload(),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     x_patient_profile: uuid.UUID | None = Header(None),
 ):
     doc = _document(db, user, document_id, x_patient_profile)
-    profile = db.get(PatientProfile, doc.profile_id)
-    ai_configured = bool(
-        settings.medical_ai_endpoint and settings.medical_ai_api_key and settings.medical_ai_model
-    )
-    effective_ai_consent = payload.ai_consent and ai_configured
     require_write(_role(db, user, doc, x_patient_profile))
-    auth_rate_limiter.check(
-        f"document-process:{user.id}",
-        settings.document_process_rate_limit_count,
-        settings.document_process_rate_limit_window_seconds,
-        "Too many document processing requests; try again later.",
-    )
     extraction = db.scalar(
         select(DocumentExtraction).where(DocumentExtraction.document_id == doc.id)
     )
@@ -135,33 +130,38 @@ def process_document(
             409,
             "This document is already confirmed. Delete its timeline entries before re-processing.",
         )
+    auth_rate_limiter.check(
+        f"document-process:{user.id}",
+        settings.document_process_rate_limit_count,
+        settings.document_process_rate_limit_window_seconds,
+        "Too many document processing requests. Please try again later.",
+    )
     if extraction is None:
         extraction = DocumentExtraction(
             document_id=doc.id,
             profile_id=doc.profile_id,
             status="processing",
             engine_version="rapidocr+rules-v1",
-            ai_consent_granted=effective_ai_consent,
         )
         db.add(extraction)
     else:
         extraction.status = "processing"
-        extraction.ai_consent_granted = effective_ai_consent
-        extraction.ai_provider_name = None
-        extraction.ai_provider_at = None
         extraction.updated_at = datetime.now(UTC)
     doc.processing_status = "processing"
+    use_ai = payload.ai_consent and provider_configured()
+    extraction.ai_consent = use_ai
+    extraction.ai_consent_at = datetime.now(UTC) if use_ai else None
     db.commit()
     try:
         pages = extract_pages(document_storage.read(doc.profile_id, doc.id), doc.file_format)
-        candidates, engine = extract_candidates(
-            pages,
-            allow_ai=effective_ai_consent,
-            patient_name=profile.full_name if profile else None,
-        )
-        if effective_ai_consent and engine == settings.medical_ai_model:
-            extraction.ai_provider_name = settings.medical_ai_model
-            extraction.ai_provider_at = datetime.now(UTC)
+        if use_ai:
+            patient = db.get(PatientProfile, doc.profile_id)
+            provider_pages = redact_for_provider(pages, patient.full_name if patient else None)
+            extraction.ai_provider = settings.medical_ai_model
+            extraction.ai_processed_at = datetime.now(UTC)
+            candidates, engine = extract_candidates(provider_pages)
+        else:
+            candidates, engine = extract_candidates(pages, allow_ai=False)
         extraction.candidates = [
             {**candidate, "candidate_id": candidate.get("candidate_id") or str(uuid.uuid4())}
             for candidate in candidates
@@ -171,34 +171,17 @@ def process_document(
         extraction.status = "needs_review"
         doc.processing_status = extraction.status
         db.commit()
-    except OversizedImage as exc:
+    except DocumentImageTooLargeError:
         extraction.status = "failed"
         doc.processing_status = "failed"
         db.commit()
-        raise HTTPException(422, str(exc)) from None
+        raise HTTPException(422, "Image exceeds the safe pixel limit for OCR") from None
     except Exception:
         extraction.status = "failed"
         doc.processing_status = "failed"
         db.commit()
         raise HTTPException(503, "Document processing failed; you can retry") from None
     return _serialize(extraction, warnings=_warnings(db, doc.profile_id, extraction.candidates))
-
-
-@router.get("/{document_id}/ai-capability")
-def ai_capability(
-    document_id: uuid.UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-    x_patient_profile: uuid.UUID | None = Header(None),
-):
-    _document(db, user, document_id, x_patient_profile)
-    return {
-        "available": bool(
-            settings.medical_ai_endpoint
-            and settings.medical_ai_api_key
-            and settings.medical_ai_model
-        )
-    }
 
 
 @router.get("/{document_id}/extraction")

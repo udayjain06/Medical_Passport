@@ -14,15 +14,18 @@ async function getTestEmailLink(page: Page, purpose: "email_verification" | "pas
   return `${link.pathname}${link.search}`;
 }
 
-async function expectAccessible(page: Page, label: string) {
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-  expect(results.violations.map((violation) => ({
-    screen: label,
-    rule: violation.id,
-    impact: violation.impact,
-    help: violation.help,
-    nodes: violation.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })),
-  }))).toEqual([]);
+async function expectAccessible(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(
+    results.violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      description: violation.description,
+      nodes: violation.nodes.map((node) => ({ target: node.target, html: node.html, failureSummary: node.failureSummary })),
+    })),
+  ).toEqual([]);
 }
 
 test("registration, protected profile, persistence, logout, and login", async ({ page }) => {
@@ -60,16 +63,6 @@ test("registration, protected profile, persistence, logout, and login", async ({
   expect(landingHeaders["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(landingHeaders["content-security-policy"]).toContain("frame-src 'self' blob:");
   await expect(page.getByRole("heading", { name: "When you cannot speak, your history should speak for you." })).toBeVisible();
-  const cachedShell = await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-    const names = await caches.keys();
-    const urls = (await Promise.all(names.map(async (name) => (await (await caches.open(name)).keys()).map((request) => new URL(request.url).pathname)))).flat();
-    return { names, urls };
-  });
-  expect(cachedShell.names).toContain("medical-passport-static-shell-v1");
-  expect(cachedShell.urls.length).toBeGreaterThan(0);
-  expect(cachedShell.urls.every((url) => ["/offline-shell.html", "/offline-card.html", "/offline-card.js", "/manifest.webmanifest", "/icons/icon.svg"].includes(url))).toBe(true);
-  expect(cachedShell.urls.some((url) => url.startsWith("/api/") || url.startsWith("/emergency/") || url.startsWith("/documents/"))).toBe(false);
   await page.screenshot({ path: path.join(screenshotDir, "landing.png"), fullPage: true });
 
   const noJavaScriptContext = await page.context().browser()!.newContext({ javaScriptEnabled: false });
@@ -81,23 +74,38 @@ test("registration, protected profile, persistence, logout, and login", async ({
 
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login$/);
-  await expectAccessible(page, "login");
+  await expectAccessible(page);
+  await page.getByLabel("Email address").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Password")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Log in" })).toBeFocused();
   await page.screenshot({ path: path.join(screenshotDir, "login.png"), fullPage: true });
 
   const email = `patient-${Date.now()}@example.com`;
   const password = "Safe-demo-passphrase-42";
   await page.goto("/signup");
-  await page.getByLabel("Language").selectOption("hi");
-  await expect(page.locator("html")).toHaveAttribute("lang", "hi");
-  await page.reload();
-  await expect(page.getByRole("heading", { name: "अपना खाता बनाएं" })).toBeVisible();
-  await page.locator('select[aria-label="भाषा"]').selectOption("en");
-  await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expectAccessible(page, "signup");
+  await expectAccessible(page);
+  await page.getByLabel("Full name").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Email address")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Password")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("I agree to the Terms.")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Terms" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("I acknowledge the Privacy notice.")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Privacy notice" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Create account" })).toBeFocused();
   await page.getByLabel("Full name").fill("Test Patient");
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("checkbox").check();
+  await page.getByLabel("I agree to the Terms.").check();
+  await page.getByLabel("I acknowledge the Privacy notice.").check();
   const registerResponse = page.waitForResponse((response) =>
     response.url().includes("/api/auth/register") && response.request().method() === "POST",
   );
@@ -106,7 +114,16 @@ test("registration, protected profile, persistence, logout, and login", async ({
   expect(new URL(page.url()).search).toBe("");
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Welcome, Test Patient" })).toBeVisible();
+  await expect(page.locator(".first-run-list li")).toHaveCount(4);
+  await expect(page.locator(".first-run-status")).toHaveText(["Not started", "Not started", "Not started", "Not started"]);
   await page.screenshot({ path: path.join(screenshotDir, "dashboard.png"), fullPage: true });
+  await page.getByRole("combobox", { name: "Language" }).selectOption("hi");
+  await expect(page.getByRole("heading", { name: "शुरुआती कदम" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "hi");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "शुरुआती कदम" })).toBeVisible();
+  await page.getByRole("combobox", { name: "भाषा" }).selectOption("en");
+  await expect(page.getByRole("heading", { name: "Your first steps" })).toBeVisible();
 
   const verificationPath = await getTestEmailLink(page, "email_verification");
   await page.goto(verificationPath);
@@ -162,7 +179,9 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText(email)).toBeVisible();
 
-  await page.getByRole("link", { name: "Documents" }).click();
+  await page.getByRole("navigation", { name: "Account navigation" }).getByRole("link", { name: "Documents" }).click();
+  await expect(page.getByRole("heading", { name: "Your documents" })).toBeVisible();
+  await expectAccessible(page);
   const fixture = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF");
   await page.locator('input[type="file"]').setInputFiles({
     name: "synthetic-lab-report.pdf",
@@ -184,6 +203,13 @@ test("registration, protected profile, persistence, logout, and login", async ({
   }
   await page.mouse.up();
   await expect(page.getByRole("dialog", { name: "Document details" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
+  const sheetControls = page.locator(".document-sheet button:not(:disabled), .document-sheet a[href], .document-sheet input:not(:disabled), .document-sheet select:not(:disabled), .document-sheet textarea:not(:disabled), .document-sheet [tabindex='0']");
+  const lastSheetControl = sheetControls.last();
+  await page.keyboard.press("Shift+Tab");
+  await expect(lastSheetControl).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
   await expect(page.locator(".document-sheet")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)", { timeout: 5000 });
   const glassSurface = await page.locator(".account-header").evaluate((element) => ({
     filter: getComputedStyle(element).backdropFilter,
@@ -201,6 +227,10 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.mouse.up();
   await expect(page.getByRole("dialog", { name: "Document details" })).toHaveCount(0, { timeout: 5000 });
   await page.getByRole("button", { name: "Details" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Document details" })).toHaveCount(0, { timeout: 5000 });
+  await expect(page.getByRole("button", { name: "Details" })).toBeFocused();
+  await page.getByRole("button", { name: "Details" }).click();
   await expect(page.getByTitle("Preview synthetic-lab-report.pdf")).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Close" }).click();
@@ -217,9 +247,14 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByRole("button", { name: "Details" }).click();
   await page.getByRole("button", { name: "Run OCR and extraction" }).click();
   await expect(page.getByText("needs review")).toBeVisible({ timeout: 60000 });
-  await expect(page.getByText(/send redacted OCR text/)).toHaveCount(0);
-  await expectAccessible(page, "document review");
   await expect(page.locator(".review-box textarea").first()).toHaveValue(/Synthetic Lab Report/);
+  const aiCapabilities = await page.evaluate(async () => {
+    const response = await fetch("/api/auth/ai-capabilities", { credentials: "include" });
+    return await response.json() as { external_ai_configured: boolean };
+  });
+  expect(aiCapabilities.external_ai_configured).toBe(false);
+  await expect(page.getByRole("checkbox", { name: /Allow this document/ })).toHaveCount(0);
+  await expectAccessible(page);
   // Nothing can be confirmed until the patient accepts at least one suggestion.
   await expect(page.getByRole("button", { name: /Add 0 accepted/ })).toBeDisabled();
   const timelineCandidate = page.locator(".candidate").filter({
@@ -231,51 +266,134 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByRole("button", { name: "Close" }).click();
   await page.goto("/timeline");
   await expect(page.getByText("Source Text", { exact: false })).toBeVisible();
-  const sourceFilter = page.getByLabel("Filter source document");
+  const timelineFilters = page.getByRole("region", { name: "Timeline filters" });
+  const sourceFilter = timelineFilters.getByLabel("All sources");
   await sourceFilter.selectOption({ label: "synthetic-lab-report.png" });
   await expect(sourceFilter).toHaveValue(/.+/);
   await expect(page.locator(".timeline-item").first()).toBeVisible();
-  await page.getByLabel("Filter category").selectOption("Medical observation");
+  const categoryFilter = timelineFilters.getByLabel("Category");
+  await categoryFilter.selectOption("Medical observation");
   await expect(page.getByRole("heading", { name: /Synthetic Lab Report/ })).toBeVisible();
-  await page.getByLabel("Filter source document").selectOption("");
-  await page.getByLabel("Filter category").selectOption("");
+  await sourceFilter.selectOption("");
+  await categoryFilter.selectOption("");
   await page.getByLabel("Event title").fill("E2E timeline event");
-  await page.getByLabel("Event category").selectOption("Allergy");
+  await page.getByLabel("Category").first().selectOption("Allergy");
   await page.getByLabel("Event date").fill("2025-04-12");
-  await page.getByLabel("Event review status").selectOption("conflict");
+  await page.getByLabel("Review status").first().selectOption("conflict");
   await page.getByLabel("Conflict group").fill("e2e-conflict");
   await page.getByRole("button", { name: "Add event" }).click();
   await expect(page.getByRole("heading", { name: "E2E timeline event" })).toBeVisible();
-  await page.getByLabel("Filter category").selectOption("Allergy");
+  await categoryFilter.selectOption("Allergy");
   await expect(page.locator(".timeline-item")).toHaveCount(1);
   const e2eEvent = page.locator(".timeline-item").filter({ has: page.getByRole("heading", { name: "E2E timeline event" }) });
   await e2eEvent.getByRole("button", { name: "Edit" }).click();
   await page.getByLabel("Event title").fill("E2E edited timeline event");
-  await page.getByLabel("Event review status").selectOption("uncertain");
+  await page.getByLabel("Review status").first().selectOption("uncertain");
   await page.getByLabel("Why is this uncertain?").fill("Synthetic test uncertainty.");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("heading", { name: "E2E edited timeline event" })).toBeVisible();
-  await page.getByLabel("Filter review status").selectOption("uncertain");
+  const reviewStatusFilter = timelineFilters.getByLabel("Review status");
+  await reviewStatusFilter.selectOption("uncertain");
   await expect(page.getByText("Synthetic test uncertainty.")).toBeVisible();
   page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByRole("heading", { name: "E2E edited timeline event" })).toHaveCount(0);
-  await page.getByLabel("Filter review status").selectOption("");
+  await reviewStatusFilter.selectOption("");
 
   await page.goto("/emergency");
-  await expectAccessible(page, "emergency sharing account");
+  await expect(page.getByLabel("Set an offline PIN (8 or more digits)")).toBeVisible();
+  await expectAccessible(page);
+  const offlineFields = page.getByRole("group", { name: "Choose fields for the offline card" });
+  await offlineFields.getByLabel("Patient name").check();
+  await offlineFields.getByLabel("Blood group").check();
+  await offlineFields.getByLabel("Known allergies").check();
+  await offlineFields.getByLabel("Emergency contacts").check();
+  await page.getByLabel("Set an offline PIN (8 or more digits)").fill("13572468");
+  await page.getByLabel("Confirm offline PIN").fill("13572468");
+  await page.getByRole("checkbox", { name: /I understand this local copy/ }).check();
+  await page.getByRole("button", { name: "Save encrypted card on this device" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Encrypted emergency card saved" })).toBeVisible();
+  const offlineHref = await page.getByRole("link", { name: "Open offline card" }).getAttribute("href");
+  expect(offlineHref).toBeTruthy();
+  const offlineUrl = new URL(offlineHref!, page.url()).toString();
+  const profileId = new URL(offlineUrl).searchParams.get("profile");
+  expect(profileId).toBeTruthy();
+  const storedCard = await page.evaluate(async (id) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("medical-passport-offline-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const record = await new Promise<{ ciphertext: ArrayBuffer }>((resolve, reject) => {
+        const request = database.transaction("cards", "readonly").objectStore("cards").get(id);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const cleartext = new TextDecoder().decode(record.ciphertext);
+      return {
+        hasCiphertext: record.ciphertext instanceof ArrayBuffer,
+        containsPatientData: cleartext.includes("Test Patient") || cleartext.includes("Patient reports penicillin allergy"),
+      };
+    } finally {
+      database.close();
+    }
+  }, profileId!);
+  expect(storedCard.hasCiphertext).toBe(true);
+  expect(storedCard.containsPatientData).toBe(false);
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  const staticCache = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const entries: string[] = [];
+    for (const name of names) {
+      const cache = await caches.open(name);
+      for (const request of await cache.keys()) entries.push(new URL(request.url).pathname);
+    }
+    return { names, entries: entries.sort() };
+  });
+  expect(staticCache.names).toEqual(["medical-passport-static-shell-v1"]);
+  expect(staticCache.entries).toEqual([
+    "/icons/medical-passport.svg",
+    "/manifest.webmanifest",
+    "/offline-card-crypto.js",
+    "/offline-card.css",
+    "/offline-card.html",
+    "/offline-card.js",
+  ]);
+  expect(staticCache.entries.some((entry) => entry.startsWith("/api/") || entry.startsWith("/emergency/"))).toBe(false);
+  await page.context().setOffline(true);
+  const offlinePage = await page.context().newPage();
+  await offlinePage.goto(offlineUrl);
+  await offlinePage.getByLabel("PIN · पिन").fill("00000000");
+  await offlinePage.getByRole("button", { name: "Unlock · खोलें" }).click();
+  await expect(offlinePage.getByRole("status")).toContainText("PIN did not match");
+  await expect(offlinePage.getByRole("heading", { name: "Test Patient" })).toHaveCount(0);
+  await offlinePage.getByLabel("PIN · पिन").fill("13572468");
+  await offlinePage.getByRole("button", { name: "Unlock · खोलें" }).click();
+  await expect(offlinePage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
+  await expect(offlinePage.getByText("Patient reports penicillin allergy")).toBeVisible();
+  await expect(offlinePage.locator("#last-synced")).toContainText("Last synced");
+  await offlinePage.once("dialog", (dialog) => dialog.accept());
+  await offlinePage.getByRole("button", { name: "Remove from this device" }).click();
+  await expect(offlinePage.getByRole("status")).toContainText("removed from this device");
+  await offlinePage.close();
+  await page.context().setOffline(false);
+
   await page.locator("#share-expiry").selectOption("8760");
   await page.locator("#share-label").fill("Wallet card");
   await page.getByText("I understand anyone with this QR link can view the selected information.").click();
   await page.getByRole("button", { name: "Create emergency QR" }).click();
-  const qrDownload = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Download QR" }).click();
-  expect((await qrDownload).suggestedFilename()).toBe("medical-passport-emergency-qr.png");
   const publicLink = await page.locator(".qr-result a").first().getAttribute("href");
   expect(publicLink).toBeTruthy();
   const publicUrl = new URL(new URL(publicLink!).pathname, page.url()).toString();
   await expect(page.getByAltText("Emergency access QR code")).toBeVisible();
   await expect(page.getByText(/cannot be shown again/)).toBeVisible();
+  const qrDownload = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download QR" }).click();
+  expect((await qrDownload).suggestedFilename()).toBe("medical-passport-emergency-qr.png");
   await page.evaluate(() => {
     const testWindow = window as Window & { __walletPrintCalled?: boolean };
     testWindow.print = () => { testWindow.__walletPrintCalled = true; };
@@ -285,32 +403,9 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.emulateMedia({ media: "print" });
   await expect(page.locator(".wallet-card")).toBeVisible();
   await page.emulateMedia({ media: "screen" });
-  await page.getByRole("checkbox", { name: /Save an encrypted emergency card on this device/ }).check();
-  await page.getByLabel("Set a PIN (at least 6 characters)").fill("183742");
-  await page.getByRole("button", { name: "Save encrypted card" }).click();
-  await expect(page.getByText(/Last synced:/)).toBeVisible();
-  const storedCard = await page.evaluate(() => new Promise<{ ciphertext: string; salt: string; iv: string }>((resolve, reject) => {
-    const request = indexedDB.open("medical-passport-device-card", 1);
-    request.onsuccess = () => {
-      const read = request.result.transaction("cards", "readonly").objectStore("cards").get("current");
-      read.onsuccess = () => resolve(read.result);
-      read.onerror = () => reject(read.error);
-    };
-    request.onerror = () => reject(request.error);
-  }));
-  expect(storedCard.ciphertext).not.toContain("Test Patient");
-  await page.goto("/offline-card.html");
-  await page.getByLabel("PIN").fill("183742");
-  await page.getByRole("button", { name: "Unlock card" }).click();
-  await expect(page.locator("#card")).toContainText("Test Patient");
-  await page.context().setOffline(true);
-  await page.reload();
-  await page.getByLabel("PIN").fill("183742");
-  await page.getByRole("button", { name: "Unlock card" }).click();
-  await expect(page.locator("#card")).toContainText("Test Patient");
-  await page.getByRole("button", { name: "Remove from this device" }).click();
-  await expect(page.getByText("Emergency card removed from this device.")).toBeVisible();
-  await page.context().setOffline(false);
+
+  await page.goto("/dashboard");
+  await expect(page.locator(".first-run-status")).toHaveText(["Complete", "Complete", "Complete", "Complete"]);
   await page.goto("/emergency");
 
   const publicContext = await page.context().browser()!.newContext();
@@ -321,8 +416,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
   expect(publicResponse!.headers()["cache-control"]).toContain("no-store");
   expect(publicResponse!.headers()["referrer-policy"]).toBe("no-referrer");
   await expect(publicPage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
+  await expectAccessible(publicPage);
   await expect(publicPage.getByText("Test Patient", { exact: false }).first()).toBeVisible();
-  await expectAccessible(publicPage, "emergency scan");
   await page.goto("/emergency");
   await expect(page.getByText(/viewed 1×/)).toBeVisible();
   await page.getByRole("button", { name: "Who viewed" }).click();
@@ -341,6 +436,14 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await publicPage.reload();
   await expect(publicPage.getByRole("heading", { name: "Link unavailable" })).toBeVisible();
   await publicContext.close();
+
+  await page.goto("/emergency");
+  await page.locator("#share-label").fill("Consent withdrawal test");
+  await page.getByRole("checkbox", { name: /I understand anyone with this QR link/ }).check();
+  await page.getByRole("button", { name: "Create emergency QR" }).click();
+  const withdrawalLink = await page.locator(".qr-result a").first().getAttribute("href");
+  expect(withdrawalLink).toBeTruthy();
+  const withdrawalUrl = new URL(new URL(withdrawalLink!).pathname, page.url()).toString();
 
   await page.goto("/family");
   await page.getByLabel("Dependent full name").fill("Synthetic Dependent");
@@ -383,7 +486,8 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await familyPage.getByLabel("Full name").fill("Family Member");
   await familyPage.getByLabel("Email address").fill(familyEmail);
   await familyPage.getByLabel("Password").fill(password);
-  await familyPage.getByRole("checkbox").check();
+  await familyPage.getByLabel("I agree to the Terms.").check();
+  await familyPage.getByLabel("I acknowledge the Privacy notice.").check();
   await familyPage.getByRole("button", { name: "Create account" }).click();
   await expect(familyPage).toHaveURL(/\/dashboard$/);
   await page.goto("/family");
@@ -398,7 +502,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(familyPage.getByText("synthetic-lab-report.png")).toBeVisible();
   await expect(familyPage.getByRole("button", { name: "Choose a file" })).toHaveCount(0);
   await familyPage.getByRole("button", { name: "Details" }).click();
-  await expect(familyPage.getByTitle("Preview synthetic-lab-report.png")).toBeVisible();
+  await expect(familyPage.getByAltText("Preview of synthetic-lab-report.png")).toBeVisible();
   await expect(familyPage.getByRole("button", { name: "Delete document" })).toHaveCount(0);
   await familyPage.goto("/timeline");
   await expect(familyPage.getByText(/This profile is read-only/)).toBeVisible();
@@ -420,31 +524,28 @@ test("registration, protected profile, persistence, logout, and login", async ({
     expect(layout.width <= 375, `${route} mobile overflow: ${JSON.stringify(layout)}`).toBe(true);
   }
   await page.goto("/settings/account");
-  await expectAccessible(page, "data and privacy");
+  await expect(page.getByRole("heading", { name: "Export my data" })).toBeVisible();
+  await expectAccessible(page);
   const fhirDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download FHIR export" }).click();
+  await page.getByRole("button", { name: "Download FHIR Bundle" }).click();
   expect((await fhirDownload).suggestedFilename()).toBe("medical-passport-fhir-r4-aligned.json");
-  const linkBeforeWithdrawal = await page.evaluate(async () => {
-    const response = await fetch("/api/emergency/shares", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fields: ["full_name"], expires_in_hours: 24, consent: true }),
-    });
-    return { status: response.status, body: await response.json() as { url?: string } };
-  });
-  expect(linkBeforeWithdrawal.status).toBe(201);
-  const withdrawResponse = await page.evaluate(async () => {
-    const response = await fetch("/api/privacy/consents/emergency_sharing/withdraw", { method: "POST" });
-    return { status: response.status, body: await response.json() as { revoked_links?: number } };
-  });
-  expect(withdrawResponse.status).toBe(200);
-  expect(withdrawResponse.body.revoked_links).toBe(1);
-  const revokedToken = new URL(linkBeforeWithdrawal.body.url!).pathname.split("/").at(-1);
-  const revokedAfterConsent = await page.evaluate(async (token) => (await fetch(`/api/public/emergency/${token}`)).status, revokedToken);
-  expect(revokedAfterConsent).toBe(404);
   const exportDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download export" }).click();
   expect((await exportDownload).suggestedFilename()).toBe("medical-passport-export.json");
+  const withdrawalResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/auth/consents/emergency_sharing/withdraw") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Withdraw emergency-sharing consent and revoke links" }).click();
+  const withdrawalResult = await (await withdrawalResponse).json() as { withdrawn_records: number; revoked_links: number };
+  expect(withdrawalResult.withdrawn_records).toBeGreaterThan(0);
+  expect(withdrawalResult.revoked_links).toBeGreaterThan(0);
+  await expect(page.getByRole("status").filter({ hasText: "Consent withdrawn." })).toContainText("revoked.");
+  const withdrawnContext = await page.context().browser()!.newContext();
+  const withdrawnPage = await withdrawnContext.newPage();
+  monitor(withdrawnPage);
+  await withdrawnPage.goto(withdrawalUrl);
+  await expect(withdrawnPage.getByRole("heading", { name: "Link unavailable" })).toBeVisible();
+  await withdrawnContext.close();
   await page.getByLabel("Password").fill(replacementPassword);
   await page.getByLabel("Type DELETE to confirm").fill("DELETE");
   await page.getByRole("button", { name: "Delete account permanently" }).click();

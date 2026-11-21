@@ -5,8 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { ProfileSwitcher } from "@/components/profile-switcher";
-import { LanguageSwitcher } from "@/components/language-switcher";
-import { useLanguage } from "@/lib/language";
+import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 
 export function AccountNav() {
   const pathname = usePathname();
@@ -34,8 +33,8 @@ export function AccountNav() {
       <div className="account-actions">
         <LanguageSwitcher />
         <ProfileSwitcher />
-        <nav className="account-nav" aria-label="Account navigation"><Link href="/dashboard" aria-current={pathname === "/dashboard" ? "page" : undefined}>{t("Overview")}</Link><Link href="/documents" aria-current={pathname.startsWith("/documents") ? "page" : undefined}>{t("Documents")}</Link><Link href="/timeline" aria-current={pathname.startsWith("/timeline") ? "page" : undefined}>{t("Timeline")}</Link><Link href="/emergency" aria-current={pathname.startsWith("/emergency") ? "page" : undefined}>{t("Emergency")}</Link><Link href="/family" aria-current={pathname.startsWith("/family") ? "page" : undefined}>{t("Family")}</Link><Link href="/settings/abha" aria-current={pathname.startsWith("/settings/abha") ? "page" : undefined}>ABHA</Link><Link href="/settings/account" aria-current={pathname.startsWith("/settings/account") ? "page" : undefined}>{t("Data & privacy")}</Link><Link href="/profile" aria-current={pathname === "/profile" ? "page" : undefined}>{t("My profile")}</Link></nav>
-        <button className="text-button" type="button" onClick={logout} disabled={busy}>{busy ? "Logging out…" : t("Log out")}</button>
+        <nav className="account-nav" aria-label="Account navigation"><Link href="/dashboard" aria-current={pathname === "/dashboard" ? "page" : undefined}>{t("accountOverview")}</Link><Link href="/documents" aria-current={pathname.startsWith("/documents") ? "page" : undefined}>{t("navDocuments")}</Link><Link href="/timeline" aria-current={pathname.startsWith("/timeline") ? "page" : undefined}>{t("navTimeline")}</Link><Link href="/emergency" aria-current={pathname.startsWith("/emergency") ? "page" : undefined}>{t("navEmergency")}</Link><Link href="/family" aria-current={pathname.startsWith("/family") ? "page" : undefined}>{t("navFamily")}</Link><Link href="/settings/abha" aria-current={pathname.startsWith("/settings/abha") ? "page" : undefined}>{t("navAbha")}</Link><Link href="/settings/account" aria-current={pathname.startsWith("/settings/account") ? "page" : undefined}>{t("navDataPrivacy")}</Link><Link href="/profile" aria-current={pathname === "/profile" ? "page" : undefined}>{t("navProfile")}</Link></nav>
+        <button className="text-button" type="button" onClick={logout} disabled={busy}>{busy ? t("navLoggingOut") : t("navLogout")}</button>
       </div>
     </header>
     {error && <p className="form-error" role="alert" style={{ width: "min(1120px, calc(100% - 40px))", margin: "0 auto 10px" }}>{error}</p>}
