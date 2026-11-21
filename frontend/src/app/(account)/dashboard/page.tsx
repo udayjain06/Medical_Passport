@@ -48,6 +48,15 @@ export default function DashboardPage() {
     </section>
     {error && <p className="form-error" role="alert">{error}</p>}
     {!profile && !error && <p className="loading" role="status">Loading your profile…</p>}
+    <section className="panel first-run-checklist" aria-labelledby="first-run-heading">
+      <h2 id="first-run-heading">First-run checklist</h2>
+      <ol>
+        <li><Link href="/profile">Add profile details</Link></li>
+        <li><Link href="/documents">Upload a record</Link></li>
+        <li><Link href="/documents">Review extracted facts</Link></li>
+        <li><Link href="/emergency">Create an emergency card</Link></li>
+      </ol>
+    </section>
     {profile && <div className="dashboard-grid" style={{ marginTop: 18 }}>
       <section className="panel" aria-labelledby="profile-summary-heading">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><h2 id="profile-summary-heading">Patient profile</h2><span className="status-pill">Patient-reported</span></div>

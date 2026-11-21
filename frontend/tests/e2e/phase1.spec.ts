@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -11,6 +12,17 @@ async function getTestEmailLink(page: Page, purpose: "email_verification" | "pas
   expect(result.body.url).toBeTruthy();
   const link = new URL(result.body.url!);
   return `${link.pathname}${link.search}`;
+}
+
+async function expectAccessible(page: Page, label: string) {
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => ({
+    screen: label,
+    rule: violation.id,
+    impact: violation.impact,
+    help: violation.help,
+    nodes: violation.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })),
+  }))).toEqual([]);
 }
 
 test("registration, protected profile, persistence, logout, and login", async ({ page }) => {
@@ -48,6 +60,16 @@ test("registration, protected profile, persistence, logout, and login", async ({
   expect(landingHeaders["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(landingHeaders["content-security-policy"]).toContain("frame-src 'self' blob:");
   await expect(page.getByRole("heading", { name: "When you cannot speak, your history should speak for you." })).toBeVisible();
+  const cachedShell = await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    const names = await caches.keys();
+    const urls = (await Promise.all(names.map(async (name) => (await (await caches.open(name)).keys()).map((request) => new URL(request.url).pathname)))).flat();
+    return { names, urls };
+  });
+  expect(cachedShell.names).toContain("medical-passport-static-shell-v1");
+  expect(cachedShell.urls.length).toBeGreaterThan(0);
+  expect(cachedShell.urls.every((url) => ["/offline-shell.html", "/offline-card.html", "/offline-card.js", "/manifest.webmanifest", "/icons/icon.svg"].includes(url))).toBe(true);
+  expect(cachedShell.urls.some((url) => url.startsWith("/api/") || url.startsWith("/emergency/") || url.startsWith("/documents/"))).toBe(false);
   await page.screenshot({ path: path.join(screenshotDir, "landing.png"), fullPage: true });
 
   const noJavaScriptContext = await page.context().browser()!.newContext({ javaScriptEnabled: false });
@@ -59,6 +81,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
 
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login$/);
+  await expectAccessible(page, "login");
   await page.screenshot({ path: path.join(screenshotDir, "login.png"), fullPage: true });
 
   const email = `patient-${Date.now()}@example.com`;
@@ -70,6 +93,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await expect(page.getByRole("heading", { name: "अपना खाता बनाएं" })).toBeVisible();
   await page.locator('select[aria-label="भाषा"]').selectOption("en");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expectAccessible(page, "signup");
   await page.getByLabel("Full name").fill("Test Patient");
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password").fill(password);
@@ -194,6 +218,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByRole("button", { name: "Run OCR and extraction" }).click();
   await expect(page.getByText("needs review")).toBeVisible({ timeout: 60000 });
   await expect(page.getByText(/send redacted OCR text/)).toHaveCount(0);
+  await expectAccessible(page, "document review");
   await expect(page.locator(".review-box textarea").first()).toHaveValue(/Synthetic Lab Report/);
   // Nothing can be confirmed until the patient accepts at least one suggestion.
   await expect(page.getByRole("button", { name: /Add 0 accepted/ })).toBeDisabled();
@@ -238,18 +263,19 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.getByLabel("Filter review status").selectOption("");
 
   await page.goto("/emergency");
+  await expectAccessible(page, "emergency sharing account");
   await page.locator("#share-expiry").selectOption("8760");
   await page.locator("#share-label").fill("Wallet card");
   await page.getByText("I understand anyone with this QR link can view the selected information.").click();
   await page.getByRole("button", { name: "Create emergency QR" }).click();
+  const qrDownload = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download QR" }).click();
+  expect((await qrDownload).suggestedFilename()).toBe("medical-passport-emergency-qr.png");
   const publicLink = await page.locator(".qr-result a").first().getAttribute("href");
   expect(publicLink).toBeTruthy();
   const publicUrl = new URL(new URL(publicLink!).pathname, page.url()).toString();
   await expect(page.getByAltText("Emergency access QR code")).toBeVisible();
   await expect(page.getByText(/cannot be shown again/)).toBeVisible();
-  const qrDownload = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Download QR" }).click();
-  expect((await qrDownload).suggestedFilename()).toBe("medical-passport-emergency-qr.png");
   await page.evaluate(() => {
     const testWindow = window as Window & { __walletPrintCalled?: boolean };
     testWindow.print = () => { testWindow.__walletPrintCalled = true; };
@@ -259,6 +285,33 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await page.emulateMedia({ media: "print" });
   await expect(page.locator(".wallet-card")).toBeVisible();
   await page.emulateMedia({ media: "screen" });
+  await page.getByRole("checkbox", { name: /Save an encrypted emergency card on this device/ }).check();
+  await page.getByLabel("Set a PIN (at least 6 characters)").fill("183742");
+  await page.getByRole("button", { name: "Save encrypted card" }).click();
+  await expect(page.getByText(/Last synced:/)).toBeVisible();
+  const storedCard = await page.evaluate(() => new Promise<{ ciphertext: string; salt: string; iv: string }>((resolve, reject) => {
+    const request = indexedDB.open("medical-passport-device-card", 1);
+    request.onsuccess = () => {
+      const read = request.result.transaction("cards", "readonly").objectStore("cards").get("current");
+      read.onsuccess = () => resolve(read.result);
+      read.onerror = () => reject(read.error);
+    };
+    request.onerror = () => reject(request.error);
+  }));
+  expect(storedCard.ciphertext).not.toContain("Test Patient");
+  await page.goto("/offline-card.html");
+  await page.getByLabel("PIN").fill("183742");
+  await page.getByRole("button", { name: "Unlock card" }).click();
+  await expect(page.locator("#card")).toContainText("Test Patient");
+  await page.context().setOffline(true);
+  await page.reload();
+  await page.getByLabel("PIN").fill("183742");
+  await page.getByRole("button", { name: "Unlock card" }).click();
+  await expect(page.locator("#card")).toContainText("Test Patient");
+  await page.getByRole("button", { name: "Remove from this device" }).click();
+  await expect(page.getByText("Emergency card removed from this device.")).toBeVisible();
+  await page.context().setOffline(false);
+  await page.goto("/emergency");
 
   const publicContext = await page.context().browser()!.newContext();
   const publicPage = await publicContext.newPage();
@@ -269,6 +322,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   expect(publicResponse!.headers()["referrer-policy"]).toBe("no-referrer");
   await expect(publicPage.getByRole("heading", { name: "Test Patient" })).toBeVisible();
   await expect(publicPage.getByText("Test Patient", { exact: false }).first()).toBeVisible();
+  await expectAccessible(publicPage, "emergency scan");
   await page.goto("/emergency");
   await expect(page.getByText(/viewed 1×/)).toBeVisible();
   await page.getByRole("button", { name: "Who viewed" }).click();
@@ -329,6 +383,7 @@ test("registration, protected profile, persistence, logout, and login", async ({
   await familyPage.getByLabel("Full name").fill("Family Member");
   await familyPage.getByLabel("Email address").fill(familyEmail);
   await familyPage.getByLabel("Password").fill(password);
+  await familyPage.getByRole("checkbox").check();
   await familyPage.getByRole("button", { name: "Create account" }).click();
   await expect(familyPage).toHaveURL(/\/dashboard$/);
   await page.goto("/family");
@@ -365,6 +420,28 @@ test("registration, protected profile, persistence, logout, and login", async ({
     expect(layout.width <= 375, `${route} mobile overflow: ${JSON.stringify(layout)}`).toBe(true);
   }
   await page.goto("/settings/account");
+  await expectAccessible(page, "data and privacy");
+  const fhirDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download FHIR export" }).click();
+  expect((await fhirDownload).suggestedFilename()).toBe("medical-passport-fhir-r4-aligned.json");
+  const linkBeforeWithdrawal = await page.evaluate(async () => {
+    const response = await fetch("/api/emergency/shares", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: ["full_name"], expires_in_hours: 24, consent: true }),
+    });
+    return { status: response.status, body: await response.json() as { url?: string } };
+  });
+  expect(linkBeforeWithdrawal.status).toBe(201);
+  const withdrawResponse = await page.evaluate(async () => {
+    const response = await fetch("/api/privacy/consents/emergency_sharing/withdraw", { method: "POST" });
+    return { status: response.status, body: await response.json() as { revoked_links?: number } };
+  });
+  expect(withdrawResponse.status).toBe(200);
+  expect(withdrawResponse.body.revoked_links).toBe(1);
+  const revokedToken = new URL(linkBeforeWithdrawal.body.url!).pathname.split("/").at(-1);
+  const revokedAfterConsent = await page.evaluate(async (token) => (await fetch(`/api/public/emergency/${token}`)).status, revokedToken);
+  expect(revokedAfterConsent).toBe(404);
   const exportDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download export" }).click();
   expect((await exportDownload).suggestedFilename()).toBe("medical-passport-export.json");

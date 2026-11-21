@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 export type Language = "en" | "hi";
 
@@ -79,6 +79,9 @@ export function LanguageProvider({ initialLanguage, children }: { initialLanguag
     setCurrentLanguage(next);
   };
   const value = useMemo(() => ({ language, setLanguage, t: (text: string) => language === "hi" ? (hindi[text] ?? text) : text }), [language]);
+  useEffect(() => {
+    if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/service-worker.js");
+  }, []);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 

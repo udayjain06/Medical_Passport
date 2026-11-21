@@ -1,9 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useLanguage } from "@/lib/language";
+import { removeEmergencyCard, saveEmergencyCard, unlockEmergencyCard, type OfflineEmergencyCard } from "@/lib/emergency-card";
 
 const FIELDS = ["full_name", "blood_group", "known_allergies", "major_conditions", "current_medications", "emergency_contacts"] as const;
 const LABELS: Record<string, string> = {
@@ -54,10 +56,15 @@ export default function Emergency() {
   const [label, setLabel] = useState("");
   const [consent, setConsent] = useState(false);
   const [shares, setShares] = useState<Share[]>([]);
+  const [loadingShares, setLoadingShares] = useState(true);
   const [created, setCreated] = useState<Created | null>(null);
   const [logs, setLogs] = useState<Record<string, AccessEntry[]>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [cardOptIn, setCardOptIn] = useState(false);
+  const [cardPin, setCardPin] = useState("");
+  const [unlockPin, setUnlockPin] = useState("");
+  const [offlineCard, setOfflineCard] = useState<OfflineEmergencyCard | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -70,7 +77,8 @@ export default function Emergency() {
   useEffect(() => {
     apiRequest<Share[]>("/emergency/shares")
       .then(setShares)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load links"));
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load links"))
+      .finally(() => setLoadingShares(false));
   }, []);
 
   async function guarded(task: () => Promise<void>, fallback: string) {
@@ -128,6 +136,39 @@ export default function Emergency() {
       const entries = await apiRequest<AccessEntry[]>(`/emergency/shares/${id}/access-log`);
       setLogs((current) => ({ ...current, [id]: entries }));
     }, "Could not load access history");
+
+  async function saveDeviceCard() {
+    setBusy(true);
+    setError("");
+    try {
+      const profile = await apiRequest<Record<string, unknown>>("/profile");
+      const cardData = Object.fromEntries(selected.map((field) => [field, profile[field]]));
+      const lastSynced = await saveEmergencyCard(cardPin, cardData);
+      setOfflineCard({ data: cardData, lastSynced });
+      setCardPin("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save the encrypted emergency card.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlockDeviceCard() {
+    setError("");
+    try {
+      setOfflineCard(await unlockEmergencyCard(unlockPin));
+      setUnlockPin("");
+    } catch {
+      setError("Could not unlock the card. Check the PIN or save a card on this device first.");
+    }
+  }
+
+  async function deleteDeviceCard() {
+    await removeEmergencyCard();
+    setOfflineCard(null);
+    setCardPin("");
+    setUnlockPin("");
+  }
 
   return (
     <main className="page-wrap">
@@ -193,9 +234,27 @@ export default function Emergency() {
         )}
       </section>
 
+      <section className="panel" style={{ marginTop: 20 }}>
+        <h2>Emergency card on this device</h2>
+        <p className="verification-note">Risk warning: this card is stored only on this device. Anyone who learns your PIN may read it. Remove it before sharing or losing the device. You are responsible for choosing which fields to save.</p>
+        <label className="consent-line"><input type="checkbox" checked={cardOptIn} onChange={(event) => setCardOptIn(event.target.checked)} /> Save an encrypted emergency card on this device</label>
+        {cardOptIn && <>
+          <div className="field"><label htmlFor="offline-pin">Set a PIN (at least 6 characters)</label><input id="offline-pin" type="password" autoComplete="new-password" inputMode="numeric" value={cardPin} onChange={(event) => setCardPin(event.target.value)} /></div>
+          <button className="button" type="button" disabled={busy || cardPin.length < 6 || selected.length === 0} onClick={() => void saveDeviceCard()}>Save encrypted card</button>
+          <div className="field"><label htmlFor="offline-unlock-pin">PIN to view the saved card</label><input id="offline-unlock-pin" type="password" autoComplete="off" inputMode="numeric" value={unlockPin} onChange={(event) => setUnlockPin(event.target.value)} /></div>
+          <button className="button button-secondary" type="button" disabled={unlockPin.length < 6} onClick={() => void unlockDeviceCard()}>Unlock saved card</button>
+        </>}
+        {offlineCard && <>
+          <p role="status">Last synced: {new Date(offlineCard.lastSynced).toLocaleString()}</p>
+          <pre className="offline-card-preview">{JSON.stringify(offlineCard.data, null, 2)}</pre>
+          <button className="button button-danger" type="button" onClick={() => void deleteDeviceCard()}>Remove from this device</button>
+        </>}
+        <p><Link href="/offline-card.html">Open the offline PIN-protected card viewer</Link></p>
+      </section>
+
       <section className="panel share-list">
         <h2>{t("Active and previous links")}</h2>
-        {shares.length === 0 ? (
+        {loadingShares ? <p role="status">Loading emergency links…</p> : shares.length === 0 ? (
           <p>No emergency links have been created.</p>
         ) : (
           shares.map((s) => {

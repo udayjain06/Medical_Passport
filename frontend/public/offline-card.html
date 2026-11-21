@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medical Passport — Offline emergency card</title>
+  <body style="font:16px system-ui,sans-serif;max-width:38rem;margin:8vh auto;padding:1rem;color:#18342a">
+    <h1>Offline emergency card</h1>
+    <p>Enter your device PIN to decrypt the emergency fields saved on this device.</p>
+    <label for="pin">PIN</label>
+    <input id="pin" type="password" autocomplete="off" inputmode="numeric" aria-describedby="status" style="display:block;min-height:44px;margin:8px 0;padding:8px">
+    <button id="unlock" type="button">Unlock card</button>
+    <p id="status" role="status"></p>
+    <p id="synced"></p>
+    <pre id="card" hidden style="white-space:pre-wrap"></pre>
+    <button id="remove" type="button" hidden>Remove from this device</button>
+    <p><a href="/">Reconnect to Medical Passport</a></p>
+    <script src="/offline-card.js" defer></script>
+  </body>
+</html>
