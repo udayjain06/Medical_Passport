@@ -16,6 +16,14 @@ from test_phase1 import ORIGIN, register
 PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF"
 
 
+def _encrypted_json_scalar(raw_value: str) -> str:
+    if raw_value.startswith(ENCRYPTED_PREFIX):
+        return raw_value
+    decoded = json.loads(raw_value)
+    assert isinstance(decoded, str)
+    return decoded
+
+
 def test_encrypted_types_still_read_legacy_plaintext():
     assert EncryptedText().process_result_value("legacy OCR", None) == "legacy OCR"
     assert EncryptedJSON().process_result_value(
@@ -40,12 +48,13 @@ def test_ocr_candidates_and_document_blobs_rotate_to_the_primary_key(client, mon
     with client.app.state.test_sessions() as db:
         document = db.get(MedicalDocument, document_id)
         profile = db.get(PatientProfile, document.profile_id)
+        candidates = [{"field": "diagnosis", "value": "Private synthetic candidate"}]
         extraction = DocumentExtraction(
             document_id=document.id,
             profile_id=profile.id,
             status="needs_review",
             ocr_text="Private synthetic OCR phrase",
-            candidates=[{"field": "diagnosis", "value": "Private synthetic candidate"}],
+            candidates=candidates,
             engine_version="test-rules",
         )
         db.add(extraction)
@@ -58,7 +67,7 @@ def test_ocr_candidates_and_document_blobs_rotate_to_the_primary_key(client, mon
         ).one()
         assert raw_ocr.startswith(ENCRYPTED_PREFIX)
         assert "Private synthetic OCR phrase" not in raw_ocr
-        encrypted_candidates = json.loads(raw_candidates)
+        encrypted_candidates = _encrypted_json_scalar(raw_candidates)
         assert encrypted_candidates.startswith(ENCRYPTED_PREFIX)
         assert "Private synthetic candidate" not in encrypted_candidates
 
@@ -71,7 +80,10 @@ def test_ocr_candidates_and_document_blobs_rotate_to_the_primary_key(client, mon
             {"id": extraction_id.hex},
         ).one()
         ocr_ciphertext = raw_ocr[len(ENCRYPTED_PREFIX) :].encode("ascii")
-        candidates_ciphertext = json.loads(raw_candidates)[len(ENCRYPTED_PREFIX) :].encode("ascii")
+        encrypted_candidates = _encrypted_json_scalar(raw_candidates)
+        assert encrypted_candidates.startswith(ENCRYPTED_PREFIX)
+        assert "Private synthetic candidate" not in encrypted_candidates
+        candidates_ciphertext = encrypted_candidates[len(ENCRYPTED_PREFIX) :].encode("ascii")
         assert Fernet(new_key.encode()).decrypt(ocr_ciphertext) == b"Private synthetic OCR phrase"
         assert (
             Fernet(new_key.encode()).decrypt(candidates_ciphertext)
@@ -79,9 +91,11 @@ def test_ocr_candidates_and_document_blobs_rotate_to_the_primary_key(client, mon
         )
         with pytest.raises(InvalidToken):
             Fernet(old_key.encode()).decrypt(ocr_ciphertext)
+        with pytest.raises(InvalidToken):
+            Fernet(old_key.encode()).decrypt(candidates_ciphertext)
 
         monkeypatch.setattr(settings, "document_encryption_keys", [new_key])
         stored = db.scalar(select(DocumentExtraction).where(DocumentExtraction.id == extraction_id))
         assert stored.ocr_text == "Private synthetic OCR phrase"
-        assert stored.candidates[0]["value"] == "Private synthetic candidate"
+        assert stored.candidates == candidates
         assert read_document(profile.id, document.id) == PDF

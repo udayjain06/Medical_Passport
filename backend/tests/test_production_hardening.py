@@ -284,9 +284,11 @@ def test_export_and_account_deletion(client: TestClient, monkeypatch, tmp_path):
     assert login.status_code == 401
 
 
-def test_production_settings_require_encryption_and_https():
-    def make_settings(**kwargs):
-        return Settings(_env_file=None, **kwargs)
+def test_production_settings_require_encryption_and_https(monkeypatch):
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+    def settings_without_dotenv(**values):
+        return Settings(_env_file=None, **values)
 
     base = dict(
         app_env="production",
@@ -302,31 +304,33 @@ def test_production_settings_require_encryption_and_https():
         trusted_proxy_count=1,
     )
     with pytest.raises(ValueError):
-        make_settings(**base)  # no document_encryption_key
+        settings_without_dotenv(**base)  # no document_encryption_key
     from cryptography.fernet import Fernet
 
     key = Fernet.generate_key().decode()
     base_without_secret = {name: value for name, value in base.items() if name != "secret_key"}
     with pytest.raises(ValueError, match="SECRET_KEY"):
-        make_settings(**base_without_secret, document_encryption_key=key)
+        settings_without_dotenv(**base_without_secret, document_encryption_key=key)
     with pytest.raises(ValueError):
-        make_settings(**base, document_encryption_key="not-a-key")
+        settings_without_dotenv(**base, document_encryption_key="not-a-key")
     with pytest.raises(ValueError):
         base_http = {**base, "cors_origins": ["http://localhost:3000"]}
-        make_settings(**base_http, document_encryption_key=key)
-    assert make_settings(**base, document_encryption_key=key).app_env == "production"
+        settings_without_dotenv(**base_http, document_encryption_key=key)
+    assert settings_without_dotenv(**base, document_encryption_key=key).app_env == "production"
     with pytest.raises(ValueError, match="MALWARE_SCAN=clamav"):
-        make_settings(**{**base, "malware_scan": "off"}, document_encryption_key=key)
+        settings_without_dotenv(**{**base, "malware_scan": "off"}, document_encryption_key=key)
     with pytest.raises(ValueError, match="EMAIL_PROVIDER=console"):
-        make_settings(**{**base, "email_provider": "console"}, document_encryption_key=key)
+        settings_without_dotenv(
+            **{**base, "email_provider": "console"}, document_encryption_key=key
+        )
     with pytest.raises(ValueError, match="must use TLS"):
-        make_settings(**base, document_encryption_key=key, smtp_starttls=False)
+        settings_without_dotenv(**base, document_encryption_key=key, smtp_starttls=False)
     with pytest.raises(ValueError, match="EMAIL_TEST_HOOK_ENABLED"):
-        make_settings(**base, document_encryption_key=key, email_test_hook_enabled=True)
+        settings_without_dotenv(**base, document_encryption_key=key, email_test_hook_enabled=True)
     with pytest.raises(ValueError, match="REDIS_URL"):
-        make_settings(**{**base, "redis_url": None}, document_encryption_key=key)
+        settings_without_dotenv(**{**base, "redis_url": None}, document_encryption_key=key)
     with pytest.raises(ValueError, match="TRUSTED_PROXY_COUNT"):
-        make_settings(**{**base, "trusted_proxy_count": 0}, document_encryption_key=key)
+        settings_without_dotenv(**{**base, "trusted_proxy_count": 0}, document_encryption_key=key)
 
 
 def test_rules_parse_indian_dates_and_ignore_none_allergies():

@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     def validate_production_security(self) -> Settings:
         placeholder = "GENERATE_A_UNIQUE_SECRET_WITH_THE_COMMAND_ABOVE"
         if self.app_env == "production":
+            if "secret_key" not in self.model_fields_set:
+                raise ValueError("SECRET_KEY must be explicitly configured in production")
             if len(self.secret_key) < 32 or self.secret_key == placeholder:
                 raise ValueError("SECRET_KEY must be a unique value of at least 32 characters")
             if not self.cookie_secure:
