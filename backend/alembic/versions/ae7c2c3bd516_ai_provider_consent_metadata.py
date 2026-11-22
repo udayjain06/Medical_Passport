@@ -21,13 +21,9 @@ def upgrade() -> None:
         "document_extractions",
         sa.Column("ai_consent", sa.Boolean(), server_default=sa.false(), nullable=False),
     )
-    op.add_column(
-        "document_extractions", sa.Column("ai_consent_at", sa.DateTime(timezone=True))
-    )
+    op.add_column("document_extractions", sa.Column("ai_consent_at", sa.DateTime(timezone=True)))
     op.add_column("document_extractions", sa.Column("ai_provider", sa.String(length=120)))
-    op.add_column(
-        "document_extractions", sa.Column("ai_processed_at", sa.DateTime(timezone=True))
-    )
+    op.add_column("document_extractions", sa.Column("ai_processed_at", sa.DateTime(timezone=True)))
 
 
 def downgrade() -> None:

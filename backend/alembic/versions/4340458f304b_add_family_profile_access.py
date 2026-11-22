@@ -51,7 +51,7 @@ def upgrade() -> None:
             "patient_profiles",
             sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.false()),
         )
-        op.execute(sa.text("UPDATE patient_profiles SET is_primary = 1"))
+        op.execute(sa.text("UPDATE patient_profiles SET is_primary = TRUE"))
     indexes = {idx["name"] for idx in sa.inspect(bind).get_indexes("patient_profiles")}
     if op.f("ix_patient_profiles_user_id") not in indexes:
         op.create_index(
