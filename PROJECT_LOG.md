@@ -1,5 +1,12 @@
 # Project Log
 
+## 2026-11-22 — PostgreSQL, Ruff, and E2E verification fixes
+
+- **Implemented:** Made the family-profile migration use a boolean literal accepted by SQLite and PostgreSQL; corrected formatting/import order in the two Alembic revisions; required production `SECRET_KEY` to be explicitly supplied; made the encrypted JSON rotation test accept both SQLite and PostgreSQL scalar representations; made settings tests independent of inherited environment and dotenv values. Fixed a login hydration race by keeping auth fields and consent controls disabled until their React handlers are ready.
+- **Files changed:** `backend/alembic/versions/4340458f304b_add_family_profile_access.py`, `backend/alembic/versions/ae7c2c3bd516_ai_provider_consent_metadata.py`, `backend/alembic/versions/d3a42e0976bf_dpdp_consent_and_share_ownership.py`, `backend/app/config.py`, `backend/tests/test_crypto_rotation.py`, `backend/tests/test_production_hardening.py`, `frontend/src/components/auth-form.tsx`, and this log.
+- **Verification:** Ruff format check and lint passed across `app`, `tests`, and `alembic`. Full backend suites passed on PostgreSQL and SQLite (**85 passed** on each, one existing Starlette/httpx deprecation warning). Alembic upgrade and drift checks passed on both databases. Frontend `npm ci`, TypeScript, ESLint, production build, and Playwright E2E passed; E2E result: **1 passed**. `git diff --check` passed.
+- **Commands:** `ruff format --check app tests alembic`; `ruff check app tests alembic`; `pytest -q` against PostgreSQL and SQLite; `alembic upgrade head`; `alembic check`; `npm ci`; `npx tsc --noEmit`; `npx eslint src`; `npm run build`; `npm run test:e2e -- --trace off --reporter=line`.
+
 ## 2026-11-17 — Final completion, Task 0: audit fixes
 
 - **Implemented:** Required Redis and trusted-proxy configuration for production, hid interactive API schemas in production, added per-user document-processing limits, rejected oversized OCR images safely, aligned backend tests with PostgreSQL CI where configured, and added a backup/restore runbook link.

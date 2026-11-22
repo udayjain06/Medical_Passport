@@ -65,16 +65,56 @@ export function AuthForm({ mode }: Props) {
         <h1 id="form-title">{signup ? t("signupTitle") : t("loginTitle")}</h1>
         <p>{signup ? t("signupIntro") : t("loginIntro")}</p>
         <form className="form-grid" method="post" onSubmit={submit}>
-          {signup && <div className="field"><label htmlFor="full-name">{t("fullName")}</label><input id="full-name" name="full_name" autoComplete="name" required maxLength={120} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>}
-          <div className="field"><label htmlFor="email">{t("emailAddress")}</label><input id="email" name="email" type="email" autoComplete="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></div>
-          <div className="field"><label htmlFor="password">{t("password")}</label><input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{signup && <span className="field-hint">{t("passwordHint")}</span>}</div>
+          {signup && <div className="field">
+            <label htmlFor="full-name">{t("fullName")}</label>
+            <input
+              id="full-name"
+              name="full_name"
+              autoComplete="name"
+              required
+              maxLength={120}
+              value={fullName}
+              disabled={!hydrated || busy}
+              onChange={(event) => setFullName(event.target.value)}
+            />
+          </div>}
+          <div className="field">
+            <label htmlFor="email">{t("emailAddress")}</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              maxLength={320}
+              value={email}
+              disabled={!hydrated || busy}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="password">{t("password")}</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete={signup ? "new-password" : "current-password"}
+              required
+              minLength={signup ? 12 : 1}
+              maxLength={128}
+              value={password}
+              disabled={!hydrated || busy}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            {signup && <span className="field-hint">{t("passwordHint")}</span>}
+          </div>
           {signup && <div className="signup-consents">
             <label className="signup-consent" htmlFor="terms-accepted">
-              <input id="terms-accepted" name="terms_accepted" type="checkbox" required checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+              <input id="terms-accepted" name="terms_accepted" type="checkbox" required checked={termsAccepted} disabled={!hydrated || busy} onChange={(event) => setTermsAccepted(event.target.checked)} />
               <span>{language === "hi" ? "मैं सेवा की " : "I agree to the "}<Link href="/terms">{t("terms")}</Link>{language === "hi" ? " से सहमत हूँ।" : "."}</span>
             </label>
             <label className="signup-consent" htmlFor="privacy-acknowledged">
-              <input id="privacy-acknowledged" name="privacy_acknowledged" type="checkbox" required checked={privacyAcknowledged} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
+              <input id="privacy-acknowledged" name="privacy_acknowledged" type="checkbox" required checked={privacyAcknowledged} disabled={!hydrated || busy} onChange={(event) => setPrivacyAcknowledged(event.target.checked)} />
               <span>{language === "hi" ? "मैं " : "I acknowledge the "}<Link href="/privacy">{t("privacyNotice")}</Link>{language === "hi" ? " को स्वीकार करता/करती हूँ।" : "."}</span>
             </label>
           </div>}
