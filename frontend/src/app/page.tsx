@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DemoLoginAction } from "@/components/demo-login-action";
 
 function Brand() {
   return <Link className="brand" href="/" aria-label="Medical Passport home"><span className="brand-mark" aria-hidden="true">+</span><span>Medical Passport</span></Link>;
@@ -17,7 +18,7 @@ export default function Home() {
           <p className="eyebrow">Your health, clearly kept</p>
           <h1 id="hero-title">When you cannot speak, your history should <em>speak for you.</em></h1>
           <p className="hero-copy">A private place to begin bringing your health information together. Start with a patient-reported profile; add records and review them as Medical Passport grows.</p>
-          <div className="hero-actions"><Link className="button" href="/signup">Create your profile <span aria-hidden="true">→</span></Link><Link className="button button-secondary" href="/login">I already have an account</Link></div>
+          <div className="hero-actions"><Link className="button" href="/signup">Create your profile <span aria-hidden="true">→</span></Link><Link className="button button-secondary" href="/login">I already have an account</Link><DemoLoginAction variant="landing" /></div>
           <p className="trust-note">Your profile stays private behind your account. Emergency links are consent-based, limited, and expiring.</p>
         </div>
         <div className="hero-art" aria-hidden="true"><div className="sun-disc" /><div className="art-leaf" /><div className="record-sheet"><div className="record-top"><span className="record-badge">✳</span><span className="status-pill">Your profile</span></div><div className="record-line short" /><div className="record-line" /><div className="record-row"><span className="record-dot" /><span className="record-line" /></div><div className="record-row"><span className="record-dot" /><span className="record-line" /></div><div className="record-line short" /><div className="record-stamp">PATIENT<br />REPORTED</div></div></div>

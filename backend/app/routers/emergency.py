@@ -336,6 +336,9 @@ def public_emergency(token: str, request: Request, db: Session = Depends(get_db)
         else:
             result[field] = getattr(profile, field)
     result.update(document_facts(db, profile.id, allowed))
+    owner = db.get(User, share.created_by_user_id)
+    if owner is not None and owner.is_demo:
+        result["demo_data"] = True
     # Store only a coarse network prefix, never the full address.
     prefix = ".".join(ip.split(".")[:3]) + ".x" if ip.count(".") == 3 else ip.split(":")[0] + "::"
     db.add(

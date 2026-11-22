@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.demo.example
 !frontend/.env.local.example
 frontend/.env.local
 frontend/.next/

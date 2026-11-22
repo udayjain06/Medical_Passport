@@ -44,9 +44,12 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    email: EmailStr
+    # Output may include the reserved .local address used by the synthetic demo.
+    # Signup and login inputs remain validated with EmailStr.
+    email: str
     created_at: datetime
     email_verified_at: datetime | None
+    is_demo: bool = False
 
 
 class AuthResponse(BaseModel):

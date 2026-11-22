@@ -8,6 +8,7 @@ import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 type Contact = { full_name: string; phone_number: string };
 type DocFact = { text: string; record_date: string | null };
 type Data = {
+  demo_data?: boolean;
   updated_at: string;
   full_name?: string | null;
   blood_group?: string | null;
@@ -104,6 +105,7 @@ export default function PublicEmergency() {
     <main className="public-emergency">
       <LanguageSwitcher />
       <p className="eyebrow">Medical Passport · {language === "hi" ? "आपातकालीन सारांश" : "Emergency summary"}</p>
+      {data.demo_data && <p className="demo-public-banner" role="note">SYNTHETIC DEMO DATA — NOT A REAL PATIENT</p>}
       <h1>{data.full_name ?? "Emergency medical information"}</h1>
       {has("blood_group") && (
         <Section title="Blood group" hi="रक्त समूह">

@@ -64,6 +64,22 @@ Email verification uses signed one-time links that expire after 24 hours; passwo
 
    Open `http://localhost:3000`. The Next.js server proxies `/api/*` to the FastAPI service. Session cookies are HttpOnly and are not stored in browser JavaScript.
 
+## Run the synthetic demo
+
+From the repository root, run:
+
+```powershell
+.\scripts\start-demo.ps1
+```
+
+This uses the existing local database and storage, applies pending Alembic migrations, adds only missing records for the reserved fictional account, and starts or reuses the configured API and Next.js development server. It never resets the database or replaces an existing record. The backend must already be configured for `APP_ENV=development`; production startup rejects `DEMO_MODE=true`. `.env.demo.example` documents the demo-only flags. Keep your existing `backend/.env` and `frontend/.env.local` settings.
+
+Open the printed application URL and choose **Explore Demo**. The synthetic account is `demo@medicalpassport.local`; no password or external email/AI credentials are needed. It uses the normal FastAPI cookie session and existing APIs. Its persistent banner and document review identify synthetic information and deterministic fallback extraction. The demo's one-click sign-in is disabled in production and never accepts an account identifier from the browser.
+
+If the configured API port is already occupied by a process the script cannot verify, it leaves that process running. Set `API_ORIGIN` to an available local origin before starting, for example `$env:API_ORIGIN='http://127.0.0.1:8011'`. If port 3000 is occupied by an unverified process, use `-WebPort 3001`. For phone scanning on a trusted local Wi-Fi network, use `-LanHost <this-computer's-LAN-IP>` and allow the selected web port through Windows Firewall. Do not expose the development server to an untrusted network. The QR points to `PUBLIC_APP_URL`; in LAN mode the script sets it to the chosen host for the server process.
+
+The demo's sample patient, family member, reports, timeline, and contact details are fictional and **not for clinical use**. The known-fixture fallback copies fixture text into pending review candidates; it does not call an external AI provider or confirm facts automatically. ABHA/ABDM remains honestly unavailable without official sandbox access and credentials.
+
 ### PostgreSQL
 
 Set `DATABASE_URL` in `backend/.env` to a SQLAlchemy URL such as `postgresql+psycopg://medical_passport:change-me@localhost:5432/medical_passport`, then run `alembic upgrade head`. Production startup requires at least one valid `DOCUMENT_ENCRYPTION_KEYS` value (or the legacy single-key variable), `COOKIE_SECURE=true`, HTTPS `CORS_ORIGINS` and `PUBLIC_APP_URL`, a PostgreSQL `DATABASE_URL`, and `MALWARE_SCAN=clamav`. Set `TRUSTED_PROXY_COUNT` to the number of trusted proxy hops (default `0` trusts only the socket address; set it only when the app is behind your own proxy chain). Back up the database, private upload directory, and all active Fernet keys; losing every key makes encrypted medical data unreadable. Accounts can download metadata/profile/timeline exports or permanently delete the account from **Data & privacy**. Rate limiting uses in-memory counters by default; setting `REDIS_URL` selects a shared Redis counter. Authentication limits fail closed if Redis is unavailable, while public emergency lookups fail open so a Redis outage does not block emergency access. This project does not claim production readiness or ABDM certification.
@@ -122,3 +138,4 @@ The Phase 1 profile is patient-entered and is always labelled as patient-reporte
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture decisions](docs/DECISIONS.md)
 - [Project log](PROJECT_LOG.md)
+- [Local demo implementation report](docs/DEMO_IMPLEMENTATION_REPORT.md)

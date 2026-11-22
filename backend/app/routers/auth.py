@@ -13,6 +13,7 @@ from app import document_storage
 from app.auth_tokens import consume_token, issue_token, revoke_tokens
 from app.config import settings
 from app.database import get_db
+from app.demo_fixtures import DEMO_EMAIL
 from app.dependencies import get_current_user
 from app.email import (
     EmailDeliveryError,
@@ -256,6 +257,45 @@ def login(
     db.add(
         AuditEvent(
             user_id=user.id, action="auth.login.succeeded", target_type="user", target_id=user.id
+        )
+    )
+    db.commit()
+    db.refresh(user)
+    _set_session_cookie(response, user)
+    return AuthResponse(user=UserRead.model_validate(user))
+
+
+@router.get("/demo-status")
+def demo_status(db: Session = Depends(get_db)) -> dict[str, bool]:
+    enabled = settings.demo_mode and settings.app_env != "production"
+    if enabled:
+        enabled = (
+            db.scalar(select(User.id).where(User.email == DEMO_EMAIL, User.is_demo.is_(True)))
+            is not None
+        )
+    return {"enabled": enabled}
+
+
+@router.post("/demo-login", response_model=AuthResponse)
+def demo_login(request: Request, response: Response, db: Session = Depends(get_db)) -> AuthResponse:
+    _rate_limit(request, "demo-login")
+    if not settings.demo_mode or settings.app_env == "production":
+        raise HTTPException(status_code=404, detail="Demo access is unavailable")
+    user = db.scalar(
+        select(User).where(
+            User.email == DEMO_EMAIL,
+            User.is_demo.is_(True),
+            User.email_verified_at.is_not(None),
+        )
+    )
+    if user is None:
+        raise HTTPException(status_code=404, detail="Demo access is unavailable")
+    db.add(
+        AuditEvent(
+            user_id=user.id,
+            action="auth.demo_login.succeeded",
+            target_type="user",
+            target_id=user.id,
         )
     )
     db.commit()

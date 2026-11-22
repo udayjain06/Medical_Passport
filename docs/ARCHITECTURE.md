@@ -15,6 +15,16 @@ Browser
 
 The frontend does not hold session tokens in JavaScript. FastAPI validates every protected request and resolves the active patient profile through account ownership or an explicit access grant. Document visibility is profile-scoped, while write operations additionally check role permissions. Archived profiles cannot be selected. Alembic owns schema changes; the application does not create production tables at startup. `/api/health/live` reports process health and `/api/health/ready` checks database connectivity.
 
+## Local synthetic demo
+
+The demo shares the existing Next.js app, FastAPI API, SQLAlchemy models, database, private document storage, and authorization checks. Alembic revision `c4518d2a73f0` adds `users.is_demo`; only the reserved, verified `demo@medicalpassport.local` row can use `POST /api/auth/demo-login`. The endpoint is rate-limited, still uses the HttpOnly session cookie, remains behind the same Origin middleware, and returns unavailable in production. `DEMO_MODE` defaults to false and production settings reject it when true.
+
+`backend/app/demo_seed.py` is idempotent and refuses to run outside development with demo mode enabled. It creates only missing rows owned by the reserved demo account; it does not reset or replace manually edited demo content or records belonging to other users. Its five deterministic PDFs are written through the normal private-storage adapter and include the synthetic/not-for-clinical-use notice. It seeds a dependent, consent/audit entries, a source-linked confirmed diagnosis, pending extraction suggestions, and a consented emergency share. The QR token is hashed in storage; the seed command does not print or persist the raw token. Create a fresh share from the Emergency page to display a new QR.
+
+For demo-owned known fixture bytes only, `POST /api/documents/{id}/process` can use deterministic fixture text if local OCR fails or yields no candidates. The result is labelled `DEMO EXTRACTION SIMULATION`, remains pending, and still requires patient review. Demo accounts are forced to offline rules even when unrelated AI provider settings exist. Other users use the normal OCR/provider behavior. The public emergency summary includes the synthetic-data banner only for a demo-owned share and continues to return only the share's selected fields.
+
+`scripts/start-demo.ps1` verifies the existing development configuration and dependencies, applies migrations, runs the non-destructive seed, and safely reuses or starts the configured services. It does not reset data or stop an unverified listener. See the README for the PowerShell command and the LAN-scan option.
+
 ## Backend layout
 
 - `backend/app/config.py`: environment-backed settings and production checks.

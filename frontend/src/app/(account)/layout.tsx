@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/session";
 
 async function ProtectedAccount({ children }: Readonly<{ children: React.ReactNode }>) {
   const user = await requireSession();
-  return <><AccountNav /><EmailVerificationBanner verified={Boolean(user.email_verified_at)} />{children}</>;
+  return <><AccountNav />{user.is_demo && <aside className="demo-banner" role="status">DEMO MODE — SYNTHETIC DATA · Fictional information, not for clinical use.</aside>}<EmailVerificationBanner verified={Boolean(user.email_verified_at)} />{children}</>;
 }
 
 export default function AccountLayout({ children }: Readonly<{ children: React.ReactNode }>) {

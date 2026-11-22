@@ -19,6 +19,7 @@ type Extraction = {
   status: string;
   ocr_text: string | null;
   engine_version: string;
+  demo_simulation?: boolean;
   candidates: Candidate[];
   warnings?: string[];
   created_events?: number;
@@ -256,6 +257,7 @@ export function ExtractionReview({ documentId, canEdit, processingStatus, onChan
         </button>
       )}
       {error && <p className="form-error" role="alert">{error}</p>}
+      {extraction?.demo_simulation && <p className="demo-extraction-note" role="status">{language === "hi" ? "डेमो निष्कर्षण सिमुलेशन — यह ज्ञात काल्पनिक दस्तावेज़ की स्थानीय नियम-आधारित प्रतिलिपि है; बाहरी AI का उपयोग नहीं हुआ।" : "DEMO EXTRACTION SIMULATION — deterministic local rules for a known synthetic document; no external AI was used."}</p>}
       {extraction?.warnings?.map((w) => (
         <p className="form-error" role="alert" key={w}>{w}</p>
       ))}

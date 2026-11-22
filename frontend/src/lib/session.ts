@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 export type SessionUser = {
   email: string;
   email_verified_at: string | null;
+  is_demo: boolean;
 };
 
 export async function requireSession(): Promise<SessionUser> {

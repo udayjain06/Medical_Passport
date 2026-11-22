@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     )
 
     app_env: Literal["development", "test", "production"] = "development"
+    demo_mode: bool = False
     secret_key: str = "GENERATE_A_UNIQUE_SECRET_WITH_THE_COMMAND_ABOVE"
     database_url: str = "sqlite:///./medical_passport.db"
     cors_origins: list[str] = [
@@ -68,6 +69,8 @@ class Settings(BaseSettings):
     def validate_production_security(self) -> Settings:
         placeholder = "GENERATE_A_UNIQUE_SECRET_WITH_THE_COMMAND_ABOVE"
         if self.app_env == "production":
+            if self.demo_mode:
+                raise ValueError("DEMO_MODE must be false in production")
             if "secret_key" not in self.model_fields_set:
                 raise ValueError("SECRET_KEY must be explicitly configured in production")
             if len(self.secret_key) < 32 or self.secret_key == placeholder:

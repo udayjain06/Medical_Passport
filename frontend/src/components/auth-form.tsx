@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useState, useSyncExternalStore } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { DemoLoginAction } from "@/components/demo-login-action";
 import { LanguageSwitcher, useLanguage } from "@/lib/i18n";
 
 type Props = { mode: "login" | "signup" };
@@ -57,8 +58,7 @@ export function AuthForm({ mode }: Props) {
     }
   }
 
-  return (
-    <main className="auth-wrap">
+  const authCard = (
       <section className="auth-card" aria-labelledby="form-title">
         <p className="eyebrow">Medical Passport</p>
         <LanguageSwitcher />
@@ -123,7 +123,20 @@ export function AuthForm({ mode }: Props) {
         </form>
         {!signup && <p className="form-footnote"><Link href="/forgot-password">{t("forgotPassword")}</Link></p>}
         <p className="form-footnote"><Link href={signup ? "/login" : "/signup"}>{signup ? t("loginLink") : t("signupLink")}</Link></p>
+        {!signup && <DemoLoginAction variant="compact" />}
       </section>
+  );
+
+  return (
+    <main className={signup ? "auth-wrap auth-wrap-signup" : "auth-wrap"}>
+      {signup ? (
+        <div className="auth-signup-grid">
+          {authCard}
+          <DemoLoginAction variant="card" />
+        </div>
+      ) : (
+        authCard
+      )}
     </main>
   );
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, date, datetime
 
@@ -11,6 +12,11 @@ from sqlalchemy.orm import Session
 from app import document_storage
 from app.config import settings
 from app.database import get_db
+from app.demo_fixtures import (
+    DEMO_SIMULATION_ENGINE,
+    find_fixture_by_checksum,
+    fixture_ocr_pages,
+)
 from app.dependencies import get_current_user
 from app.extraction import DocumentImageTooLargeError, extract_pages
 from app.medical_ai import (
@@ -68,6 +74,7 @@ def _serialize(extraction: DocumentExtraction, db: Session | None = None, **extr
         "ocr_text": extraction.ocr_text,
         "candidates": extraction.candidates,
         "engine_version": extraction.engine_version,
+        "demo_simulation": extraction.engine_version.startswith("DEMO EXTRACTION SIMULATION"),
         "ai_consent": extraction.ai_consent,
         "ai_consent_at": extraction.ai_consent_at,
         "ai_provider": extraction.ai_provider,
@@ -148,12 +155,26 @@ def process_document(
         extraction.status = "processing"
         extraction.updated_at = datetime.now(UTC)
     doc.processing_status = "processing"
-    use_ai = payload.ai_consent and provider_configured()
+    # The demo always uses local rules, even if unrelated AI credentials are configured.
+    use_ai = payload.ai_consent and provider_configured() and not user.is_demo
     extraction.ai_consent = use_ai
     extraction.ai_consent_at = datetime.now(UTC) if use_ai else None
     db.commit()
     try:
-        pages = extract_pages(document_storage.read(doc.profile_id, doc.id), doc.file_format)
+        document_bytes = document_storage.read(doc.profile_id, doc.id)
+    except Exception:
+        extraction.status = "failed"
+        doc.processing_status = "failed"
+        db.commit()
+        raise HTTPException(503, "Document processing failed; you can retry") from None
+
+    fixture = (
+        find_fixture_by_checksum(hashlib.sha256(document_bytes).hexdigest())
+        if user.is_demo and settings.demo_mode and settings.app_env != "production"
+        else None
+    )
+    try:
+        pages = extract_pages(document_bytes, doc.file_format)
         if use_ai:
             patient = db.get(PatientProfile, doc.profile_id)
             provider_pages = redact_for_provider(pages, patient.full_name if patient else None)
@@ -162,6 +183,38 @@ def process_document(
             candidates, engine = extract_candidates(provider_pages)
         else:
             candidates, engine = extract_candidates(pages, allow_ai=False)
+        demo_simulation = False
+        if not candidates and fixture is not None:
+            pages = fixture_ocr_pages(fixture)
+            candidates, _ = extract_candidates(pages, allow_ai=False)
+            demo_simulation = True
+            engine = DEMO_SIMULATION_ENGINE
+    except DocumentImageTooLargeError:
+        extraction.status = "failed"
+        doc.processing_status = "failed"
+        db.commit()
+        raise HTTPException(422, "Image exceeds the safe pixel limit for OCR") from None
+    except Exception:
+        pages = None
+        candidates = []
+        engine = ""
+        demo_simulation = False
+        if fixture is not None:
+            try:
+                pages = fixture_ocr_pages(fixture)
+                candidates, _ = extract_candidates(pages, allow_ai=False)
+                engine = DEMO_SIMULATION_ENGINE
+                demo_simulation = True
+            except Exception:
+                pages = None
+        if pages is None:
+            extraction.status = "failed"
+            doc.processing_status = "failed"
+            db.commit()
+            raise HTTPException(503, "Document processing failed; you can retry") from None
+    if demo_simulation:
+        engine = DEMO_SIMULATION_ENGINE
+    try:
         extraction.candidates = [
             {**candidate, "candidate_id": candidate.get("candidate_id") or str(uuid.uuid4())}
             for candidate in candidates
@@ -171,11 +224,6 @@ def process_document(
         extraction.status = "needs_review"
         doc.processing_status = extraction.status
         db.commit()
-    except DocumentImageTooLargeError:
-        extraction.status = "failed"
-        doc.processing_status = "failed"
-        db.commit()
-        raise HTTPException(422, "Image exceeds the safe pixel limit for OCR") from None
     except Exception:
         extraction.status = "failed"
         doc.processing_status = "failed"
